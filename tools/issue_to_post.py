@@ -1,4 +1,4 @@
-"""Turn a "New post" issue into posts/<id>.md and media/<id>/*.
+"""Turn a post-form issue into posts/<id>.md and media/<id>/*.
 
     python tools/issue_to_post.py issue.json [--mode publish|check]
 
@@ -43,7 +43,9 @@ def parse_form(body):
     for label in LABELS:
         m = re.compile(r"^### " + re.escape(label) + r"[ \t]*\n", re.M).search(body, pos)
         if not m:
-            raise IssueError(f"the issue is missing the “{label}” field. Create it from the “New post” form.")
+            raise IssueError("this issue was not made from one of the post forms, so the bot cannot read it. "
+                             f"Close it and start again from {build.REPO}/issues/new/choose "
+                             "(pick New incident report, New investigation or New note)")
         vals[label] = (m.start(), m.end())
         pos = m.end()
     out = {}
@@ -168,7 +170,10 @@ def convert(issue, mode, today, get=fetch):
     order = ["type", "title", "date", "updated", "summary", "techniques", "tool"]
     meta = {k: meta[k] for k in order if k in meta} | {k: v for k, v in meta.items() if k not in order}
 
-    text, n_images = pull_images(slug, f["Post (Markdown)"], get)
+    post = re.sub(r"<!--.*?-->", "", f["Post (Markdown)"], flags=re.S).strip()
+    if not post or all(l.startswith("#") or not l.strip() for l in post.split("\n")):
+        raise IssueError("the post has no text yet: only headings, or nothing, is left once the hints are removed.")
+    text, n_images = pull_images(slug, post, get)
     front = yaml.safe_dump({k: (str(v) if k in ("date", "updated") else v) for k, v in meta.items()},
                            sort_keys=False, allow_unicode=True, default_flow_style=None, width=1000)
     path.write_text(f"---\n{front}---\n\n{text.strip()}\n", encoding="utf-8")

@@ -19,7 +19,7 @@ mkdir -p /tmp/w && rm -rf /tmp/w/writing && cp -r _site /tmp/w/writing && python
 
 ## Write from the browser (no Mac needed)
 
-1. github.com/estul-lachin/writing > Issues > New issue > **New post**. The issue title is the post title; fill the
+1. github.com/estul-lachin/writing > Issues > New issue > **one of the three forms** (incident report, investigation, note). The issue title is the post title; fill the
    short name, type and summary; write the post in Markdown and paste screenshots straight into the box.
 2. Save the issue, then add the label **check**. A bot builds the post and runs the privacy check, and comments
    with the result. Nothing is published.
@@ -59,7 +59,7 @@ The check reads text, not pictures: look at every screenshot before committing i
 
 - `posts/` the posts; files starting with `_` are ignored
 - `media/<id>/` a post's images
-- `tools/issue_to_post.py` turns a "New post" issue into a post; `.github/workflows/publish.yml` runs it
+- `tools/issue_to_post.py` turns a post-form issue into a post; `.github/workflows/publish.yml` runs it
 - `site/` static files copied as they are (`style.css`, `favicon.svg`, `og-image.png`)
 - `tools/build.py` the generator; writes `_site/` (not committed)
 - `assets/og-image.html` source of the link preview image

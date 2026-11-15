@@ -1,6 +1,6 @@
 name: publish
 
-# Label an issue made from the "New post" form: "check" tests it, "publish" publishes it.
+# Label an issue made from one of the post forms: "check" tests it, "publish" publishes it.
 # Only runs when the issue was opened by the repository owner and the label was added by the owner.
 on:
   issues:

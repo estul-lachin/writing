@@ -1,0 +1,71 @@
+name: New investigation
+description: "Tracing one thing through a SIEM: the question, the queries, the answer."
+title: ""
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **An issue is public the moment you save it, and so is every picture pasted into it.**
+        Write defanged from the start: `198[.]51[.]100[.]7`, `hxxp[:]//`. Only pseudonymized data (`src-xxxxxxxx`).
+        No honeypot server addresses, no Azure IDs, nothing from an employer or a client.
+
+        **Steps:** 1) fill this form and save. 2) Add the label **check** (right side, Labels). A bot tests the post and
+        comments the result. 3) When it passes, add the label **publish**.
+        Text between `<!--` and `-->` is a hint for you and is removed.
+  - type: input
+    id: slug
+    attributes:
+      label: Short name
+      description: Lowercase letters, digits and hyphens. It becomes the address, e.g. pboc-botnet gives uig.me/writing/pboc-botnet/.
+      placeholder: pboc-botnet
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - investigation
+    validations:
+      required: true
+  - type: input
+    id: summary
+    attributes:
+      label: One-line summary
+      description: Shown in the lists and in link previews. One sentence.
+    validations:
+      required: true
+  - type: input
+    id: techniques
+    attributes:
+      label: ATT&CK techniques (optional)
+      description: Comma separated.
+      placeholder: T1110.001, T1105
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Main tool (optional)
+      options:
+        - none
+        - splunk
+        - sentinel
+        - wazuh
+  - type: textarea
+    id: body
+    attributes:
+      label: Post (Markdown)
+      description: Paste screenshots straight into this box. Markdown works (## heading, **bold**, - list, ``` code).
+      value: |
+        ## The question
+        <!-- What were you trying to find out? One or two sentences. -->
+
+        ## Where I looked
+        <!-- Which tool and which data (Splunk honeypot_demo, Sentinel HP_Cowrie, Wazuh). Paste queries in code blocks. -->
+
+        ## What I found
+        <!-- The answer, with a screenshot of the result. Pasted images work. -->
+
+        ## What I would check next
+        <!-- Open questions, or what you would turn into a detection. -->
+    validations:
+      required: true

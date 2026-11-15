@@ -1,6 +1,6 @@
-name: New post
-description: Write a post for uig.me/writing. Label it "check" to test it, "publish" to publish it.
-title: "Post title"
+name: New note
+description: "A how-to, an idea or an opinion. Short is fine."
+title: ""
 body:
   - type: markdown
     attributes:
@@ -9,14 +9,15 @@ body:
         Write defanged from the start: `198[.]51[.]100[.]7`, `hxxp[:]//`. Only pseudonymized data (`src-xxxxxxxx`).
         No honeypot server addresses, no Azure IDs, nothing from an employer or a client.
 
-        The issue title is the post title. When you are done, add the label **check** to test it,
-        then **publish**. The label is removed again when the run ends.
+        **Steps:** 1) fill this form and save. 2) Add the label **check** (right side, Labels). A bot tests the post and
+        comments the result. 3) When it passes, add the label **publish**.
+        Text between `<!--` and `-->` is a hint for you and is removed.
   - type: input
     id: slug
     attributes:
       label: Short name
-      description: Lowercase, hyphens. It becomes the address, e.g. inc-002 gives uig.me/writing/inc-002/.
-      placeholder: inc-002
+      description: Lowercase letters, digits and hyphens. It becomes the address, e.g. what-i-learned gives uig.me/writing/what-i-learned/.
+      placeholder: what-i-learned
     validations:
       required: true
   - type: dropdown
@@ -25,15 +26,13 @@ body:
       label: Type
       options:
         - note
-        - investigation
-        - incident
     validations:
       required: true
   - type: input
     id: summary
     attributes:
       label: One-line summary
-      description: Shown in the lists and in link previews.
+      description: Shown in the lists and in link previews. One sentence.
     validations:
       required: true
   - type: input
@@ -55,6 +54,8 @@ body:
     id: body
     attributes:
       label: Post (Markdown)
-      description: Paste screenshots straight into this box.
+      description: Paste screenshots straight into this box. Markdown works (## heading, **bold**, - list, ``` code).
+      value: |
+        <!-- Write whatever you want to say. Start with the point in one sentence. Headings are optional. -->
     validations:
       required: true

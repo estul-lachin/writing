@@ -1,0 +1,80 @@
+name: New incident report
+description: "A real intrusion, written up as a formal report (INC-002, ...)."
+title: "INC-002: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **An issue is public the moment you save it, and so is every picture pasted into it.**
+        Write defanged from the start: `198[.]51[.]100[.]7`, `hxxp[:]//`. Only pseudonymized data (`src-xxxxxxxx`).
+        No honeypot server addresses, no Azure IDs, nothing from an employer or a client.
+
+        **Steps:** 1) fill this form and save. 2) Add the label **check** (right side, Labels). A bot tests the post and
+        comments the result. 3) When it passes, add the label **publish**.
+        Text between `<!--` and `-->` is a hint for you and is removed.
+  - type: input
+    id: slug
+    attributes:
+      label: Short name
+      description: Lowercase letters, digits and hyphens. It becomes the address, e.g. inc-002 gives uig.me/writing/inc-002/.
+      placeholder: inc-002
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - incident
+    validations:
+      required: true
+  - type: input
+    id: summary
+    attributes:
+      label: One-line summary
+      description: Shown in the lists and in link previews. One sentence.
+    validations:
+      required: true
+  - type: input
+    id: techniques
+    attributes:
+      label: ATT&CK techniques (optional)
+      description: Comma separated.
+      placeholder: T1110.001, T1105
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Main tool (optional)
+      options:
+        - none
+        - splunk
+        - sentinel
+        - wazuh
+  - type: textarea
+    id: body
+    attributes:
+      label: Post (Markdown)
+      description: Paste screenshots straight into this box. Markdown works (## heading, **bold**, - list, ``` code).
+      value: |
+        ## Summary
+        <!-- 3 to 5 sentences: what happened, how bad, how it ended. -->
+
+        ## Timeline
+        <!-- Times in UTC. One line per step: time, what happened, where you saw it. -->
+
+        ## What the attacker did (ATT&CK)
+        <!-- Step by step, with technique IDs. -->
+
+        ## Impact
+        <!-- What was reached or changed. Say plainly if nothing was lost. -->
+
+        ## Indicators
+        <!-- Defanged IPs, URLs, file hashes. -->
+
+        ## Response
+        <!-- What you did, in order. -->
+
+        ## What I changed afterwards
+        <!-- Rules, configs, habits. -->
+    validations:
+      required: true
