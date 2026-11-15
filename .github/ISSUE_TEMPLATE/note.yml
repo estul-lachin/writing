@@ -46,7 +46,6 @@ body:
     attributes:
       label: Main tool (optional)
       options:
-        - none
         - splunk
         - sentinel
         - wazuh

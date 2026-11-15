@@ -28,6 +28,9 @@ mkdir -p /tmp/w && rm -rf /tmp/w/writing && cp -r _site /tmp/w/writing && python
 4. To change a published post, edit its issue (reopen it if needed) and add **publish** again: the date stays,
    `updated` is set to today.
 
+If the forms do not open, a plain issue works too: start the text with a `---` block (`slug`, `type`, `summary`,
+optional `techniques` and `tool`), then the post. The bot's error message shows the block.
+
 The labels are removed again when the run ends, so adding one again always starts a new run. Only issues opened
 by the repository owner, with the label added by the owner, are ever processed.
 

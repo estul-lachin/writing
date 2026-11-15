@@ -36,16 +36,55 @@ class IssueError(Exception):
     pass
 
 
+PLAIN_HELP = """To publish from a plain issue, start the text with these lines (the issue title is the post title):
+
+```
+---
+slug: my-post-name
+type: note
+summary: One sentence for the list and link previews.
+techniques: T1110.001, T1105
+tool: splunk
+---
+```
+
+then write the post under them. `type` is incident, investigation or note; `techniques` and `tool` are optional.
+The forms at """ + build.REPO + """/issues/new?template=note.yml (or investigation.yml, incident.yml) fill this in for you."""
+
+
+def parse_plain(body):
+    """A plain issue: a '---' block of slug/type/summary/techniques/tool, then the post."""
+    m = re.match(r"\s*---[ \t]*\n(.*?)\n---[ \t]*\n?(.*)", body, re.S)
+    if not m:
+        return None
+    try:
+        meta = yaml.safe_load(m.group(1)) or {}
+    except yaml.YAMLError:
+        raise IssueError("the --- block at the top is not valid YAML (key: value lines).\n\n" + PLAIN_HELP)
+    if not isinstance(meta, dict):
+        raise IssueError("the --- block at the top must be key: value lines.\n\n" + PLAIN_HELP)
+    tech = meta.get("techniques") or ""
+    if isinstance(tech, list):
+        tech = ", ".join(str(t) for t in tech)
+    return {"Short name": str(meta.get("slug") or "").strip(), "Type": str(meta.get("type") or "").strip(),
+            "One-line summary": str(meta.get("summary") or "").strip(),
+            "ATT&CK techniques (optional)": str(tech).strip(),
+            "Main tool (optional)": str(meta.get("tool") or "").strip(), "Post (Markdown)": m.group(2).strip()}
+
+
 def parse_form(body):
     """The issue form renders as '### Label' + blank line + value. The last field takes everything
-    after its heading, so '### ' headings inside the post are safe."""
+    after its heading, so '### ' headings inside the post are safe. A plain issue with a --- block works too."""
+    if not re.search(r"^### Short name[ \t]*$", body, re.M):
+        plain = parse_plain(body)
+        if plain is None:
+            raise IssueError("this issue has no form fields and no --- block, so the bot cannot read it.\n\n" + PLAIN_HELP)
+        return plain
     pos, vals = 0, {}
     for label in LABELS:
         m = re.compile(r"^### " + re.escape(label) + r"[ \t]*\n", re.M).search(body, pos)
         if not m:
-            raise IssueError("this issue was not made from one of the post forms, so the bot cannot read it. "
-                             f"Close it and start again from {build.REPO}/issues/new/choose "
-                             "(pick New incident report, New investigation or New note)")
+            raise IssueError(f"the form field “{label}” is missing from the issue.\n\n" + PLAIN_HELP)
         vals[label] = (m.start(), m.end())
         pos = m.end()
     out = {}
@@ -147,7 +186,7 @@ def convert(issue, mode, today, get=fetch):
     if bad:
         raise IssueError(f"not ATT&CK technique IDs: {', '.join(bad)} (write them like T1110.001).")
     tool = f["Main tool (optional)"]
-    tool = None if tool in ("", "none") else tool
+    tool = None if tool.lower() in ("", "none", "_no response_") else tool
     if not f["Post (Markdown)"]:
         raise IssueError("the post text is empty.")
 
