@@ -219,18 +219,41 @@ def convert(issue, mode, today, get=fetch):
     return {"slug": slug, "title": title, "images": n_images, "updating": updating}
 
 
+def unpublish(issue):
+    """Turn the post named in the issue back into a draft: the date goes, the file and images stay."""
+    f = parse_form(issue["body"] or "")
+    slug = f["Short name"]
+    if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", slug) or slug in build.RESERVED:
+        raise IssueError(f"short name “{slug}” is not valid.")
+    path = ROOT / "posts" / f"{slug}.md"
+    if not path.exists():
+        raise IssueError(f"there is no posts/{slug}.md. Posts made as HTML files can only be changed in the repository.")
+    m = re.match(r"---\n(.*?)\n---\n(.*)", path.read_text(encoding="utf-8"), re.S)
+    if not m:
+        raise IssueError(f"posts/{slug}.md has no front matter.")
+    meta = yaml.safe_load(m.group(1)) or {}
+    if not meta.get("date"):
+        raise IssueError(f"{slug} is already a draft, nothing to unpublish.")
+    meta.pop("date", None)
+    meta.pop("updated", None)
+    front = yaml.safe_dump({k: (str(v) if k == "updated" else v) for k, v in meta.items()}, sort_keys=False,
+                           allow_unicode=True, default_flow_style=None, width=1000)
+    path.write_text(f"---\n{front}date:\n---\n{m.group(2)}", encoding="utf-8")
+    return {"slug": slug, "title": str(meta.get("title") or slug), "images": 0, "updating": True}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("issue")
-    ap.add_argument("--mode", default="publish", choices=["publish", "check"])
+    ap.add_argument("--mode", default="publish", choices=["publish", "check", "unpublish"])
     a = ap.parse_args()
     issue = json.loads(Path(a.issue).read_text(encoding="utf-8"))
     today = datetime.datetime.now(ZoneInfo("America/Edmonton")).date().isoformat()
     out = {"ok": "false", "slug": "", "title": ""}
     try:
-        r = convert(issue, a.mode, today)
+        r = unpublish(issue) if a.mode == "unpublish" else convert(issue, a.mode, today)
         out.update(ok="true", slug=r["slug"], title=r["title"])
-        print(f"converted {r['slug']}: {r['images']} image(s), {'update' if r['updating'] else 'new post'}")
+        print(f"{a.mode} {r['slug']}: {r['images']} image(s), {'update' if r['updating'] else 'new post'}")
     except (IssueError, OSError, ValueError) as ex:
         Path("comment.md").write_text(f"Not published. Problem: {ex}\n\nFix the issue and add the label again.\n",
                                       encoding="utf-8")

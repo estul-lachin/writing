@@ -20,4 +20,5 @@ jobs:
     steps:
       - run: |
           gh label create publish --repo "${{ github.repository }}" --color 0b5d56 --description "Publish this post" --force
+          gh label create unpublish --repo "${{ github.repository }}" --color b60205 --description "Take this post off the site (back to draft)" --force
           gh label create check --repo "${{ github.repository }}" --color ededed --description "Test this post, do not publish" --force

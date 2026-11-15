@@ -1,6 +1,7 @@
 name: publish
 
-# Label an issue made from one of the post forms: "check" tests it, "publish" publishes it.
+# Label an issue made from one of the post forms: "check" tests it, "publish" publishes it, "unpublish" turns
+# the post back into a draft.
 # Only runs when the issue was opened by the repository owner and the label was added by the owner.
 on:
   issues:
@@ -18,7 +19,7 @@ concurrency:
 jobs:
   post:
     if: >-
-      (github.event.label.name == 'publish' || github.event.label.name == 'check')
+      (github.event.label.name == 'publish' || github.event.label.name == 'check' || github.event.label.name == 'unpublish')
       && github.event.sender.login == github.repository_owner
       && github.event.issue.user.login == github.repository_owner
     runs-on: ubuntu-latest
@@ -56,27 +57,35 @@ jobs:
 
       - name: Commit and deploy
         id: commit
-        if: steps.build.outputs.ok == 'true' && env.MODE == 'publish'
+        if: steps.build.outputs.ok == 'true' && (env.MODE == 'publish' || env.MODE == 'unpublish')
         env:
           SLUG: ${{ steps.conv.outputs.slug }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add posts media
-          git commit -m "Publish $SLUG (issue #$NUMBER)"
+          if git diff --cached --quiet; then
+            echo "Nothing changed: the post on the site already matches this issue." > comment.md
+            exit 0
+          fi
+          git commit -m "$MODE $SLUG (issue #$NUMBER)"
           git pull --rebase origin main
           git push origin HEAD:main
           # A push made with the workflow token does not start other workflows, so start the deploy by hand.
           gh workflow run pages.yml --repo "$REPO" --ref main
-          echo "Published: https://uig.me/writing/$SLUG/ (live in 1 to 3 minutes)." > comment.md
-          echo "done=true" >> "$GITHUB_OUTPUT"
+          if [ "$MODE" = "publish" ]; then
+            echo "Published: https://uig.me/writing/$SLUG/ (live in 1 to 3 minutes)." > comment.md
+            echo "closed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unpublished: $SLUG is a draft again and leaves the site in 1 to 3 minutes. The text and images are kept. Add the label \`publish\` to bring it back." > comment.md
+          fi
 
       - name: Report back
         if: always()
         env:
           SLUG: ${{ steps.conv.outputs.slug }}
           BUILD_OK: ${{ steps.build.outputs.ok }}
-          DONE: ${{ steps.commit.outputs.done }}
+          CLOSED: ${{ steps.commit.outputs.closed }}
         run: |
           if [ ! -f comment.md ]; then
             if [ "$BUILD_OK" = "true" ] && [ "$MODE" = "check" ]; then
@@ -87,4 +96,4 @@ jobs:
           fi
           gh issue comment "$NUMBER" --repo "$REPO" --body-file comment.md
           gh issue edit "$NUMBER" --repo "$REPO" --remove-label "$MODE" || true
-          if [ "$DONE" = "true" ]; then gh issue close "$NUMBER" --repo "$REPO" || true; fi
+          if [ "$CLOSED" = "true" ]; then gh issue close "$NUMBER" --repo "$REPO" || true; fi
