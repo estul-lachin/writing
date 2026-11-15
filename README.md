@@ -31,6 +31,11 @@ mkdir -p /tmp/w && rm -rf /tmp/w/writing && cp -r _site /tmp/w/writing && python
 If the forms do not open, a plain issue works too: start the text with a `---` block (`slug`, `type`, `summary`,
 optional `techniques` and `tool`), then the post. The bot's error message shows the block.
 
+`unpublish` turns a post back into a draft (the date goes; the text and images stay), `publish` brings it back.
+Extras for the `---` block: `date: 2026-11-14` keeps an original date; `format: html` with `wrap: report` or `article`
+for a hand-made HTML post; `allow: [value]` for a value the privacy check should let through. Images already
+in `media/<short-name>/` can be linked as `media/<short-name>/x.png` without pasting; images no longer used are removed.
+
 The labels are removed again when the run ends, so adding one again always starts a new run. Only issues opened
 by the repository owner, with the label added by the owner, are ever processed.
 

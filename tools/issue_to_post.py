@@ -36,6 +36,8 @@ class IssueError(Exception):
     pass
 
 
+EXTRA_KEYS = ("date", "updated", "incident", "playbooks", "allow", "wrap", "format")
+
 PLAIN_HELP = """To publish from a plain issue, start the text with these lines (the issue title is the post title):
 
 ```
@@ -48,7 +50,8 @@ tool: splunk
 ---
 ```
 
-then write the post under them. `type` is incident, investigation or note; `techniques` and `tool` are optional.
+(optional extras: `date: 2026-11-14` keeps an original date, `format: html` with `wrap: report` or `article` for a
+hand-made HTML post, `allow: [value]` for something the privacy check should let through) then write the post under them. `type` is incident, investigation or note; `techniques` and `tool` are optional.
 The forms at """ + build.REPO + """/issues/new?template=note.yml (or investigation.yml, incident.yml) fill this in for you."""
 
 
@@ -66,7 +69,8 @@ def parse_plain(body):
     tech = meta.get("techniques") or ""
     if isinstance(tech, list):
         tech = ", ".join(str(t) for t in tech)
-    return {"Short name": str(meta.get("slug") or "").strip(), "Type": str(meta.get("type") or "").strip(),
+    extra = {k: meta[k] for k in EXTRA_KEYS if meta.get(k) not in (None, "")}
+    return {"_extra": extra, "Short name": str(meta.get("slug") or "").strip(), "Type": str(meta.get("type") or "").strip(),
             "One-line summary": str(meta.get("summary") or "").strip(),
             "ATT&CK techniques (optional)": str(tech).strip(),
             "Main tool (optional)": str(meta.get("tool") or "").strip(), "Post (Markdown)": m.group(2).strip()}
@@ -126,14 +130,14 @@ def file_slug(text):
 def pull_images(slug, text, get=fetch):
     """Download every pasted image into media/<slug>/ and point the text at it."""
     img_dir = ROOT / "media" / slug
-    if img_dir.exists():
-        shutil.rmtree(img_dir)
 
     def html_img(m):
         tag = m.group(0)
         src = re.search(r'src="([^"]+)"', tag)
         alt = re.search(r'alt="([^"]*)"', tag)
-        return f"![{alt.group(1) if alt else ''}]({src.group(1)})" if src else tag
+        if not src or not src.group(1).startswith("https://"):
+            return tag
+        return f"![{alt.group(1) if alt else ''}]({src.group(1)})"
 
     text = re.sub(r"<img\b[^>]*>", html_img, text)
     count = 0
@@ -162,17 +166,47 @@ def pull_images(slug, text, get=fetch):
         (img_dir / name).write_bytes(data)
         return f"![{alt}](media/{slug}/{name})"
 
-    return re.sub(r'!\[([^\]]*)\]\((\S+?)(?:\s+"[^"]*")?\)', one, text), count
+    text = re.sub(r'!\[([^\]]*)\]\((\S+?)(?:\s+"[^"]*")?\)', one, text)
+    drop_unreferenced(slug, text)
+    return text, count
+
+
+def drop_unreferenced(slug, text):
+    """Images left over from an earlier version of this post, no longer used by the text, are removed."""
+    img_dir = ROOT / "media" / slug
+    if img_dir.is_dir():
+        used = set(re.findall(r"media/" + re.escape(slug) + r"/([^\s\"')>]+)", text))
+        for f in img_dir.iterdir():
+            if f.name not in used:
+                f.unlink()
+        if not any(img_dir.iterdir()):
+            img_dir.rmdir()
+
+
+def existing_post(slug):
+    """(path, front matter dict) of posts/<slug>.md or .html, or (None, {})."""
+    for ext in (".md", ".html"):
+        path = ROOT / "posts" / f"{slug}{ext}"
+        if path.exists():
+            m = re.match(r"---\n(.*?)\n---\n", path.read_text(encoding="utf-8"), re.S)
+            return path, ((yaml.safe_load(m.group(1)) or {}) if m else {})
+    return None, {}
+
+
+def check_date(v, what):
+    try:
+        return build.as_date(v, what)
+    except build.SourceError as ex:
+        raise IssueError(str(ex))
 
 
 def convert(issue, mode, today, get=fetch):
     f = parse_form(issue["body"] or "")
+    extra = f.get("_extra", {})
     slug = f["Short name"]
     if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", slug) or slug in build.RESERVED:
         raise IssueError(f"short name “{slug}” must be lowercase letters, digits and hyphens, and not one of "
                          f"{sorted(build.RESERVED)}.")
-    if (ROOT / "posts" / f"{slug}.html").exists():
-        raise IssueError(f"posts/{slug}.html is a hand-made HTML post; edit that file directly.")
     typ = f["Type"]
     if typ not in build.TYPES:
         raise IssueError(f"type must be one of {', '.join(build.TYPES)}.")
@@ -187,14 +221,16 @@ def convert(issue, mode, today, get=fetch):
         raise IssueError(f"not ATT&CK technique IDs: {', '.join(bad)} (write them like T1110.001).")
     tool = f["Main tool (optional)"]
     tool = None if tool.lower() in ("", "none", "_no response_") else tool
-    if not f["Post (Markdown)"]:
-        raise IssueError("the post text is empty.")
+    if tool and tool not in build.TOOLS:
+        raise IssueError(f"tool must be one of {', '.join(build.TOOLS)}.")
+    fmt = str(extra.get("format") or "markdown").lower()
+    if fmt not in ("markdown", "html"):
+        raise IssueError("format must be markdown or html.")
+    wrap = str(extra.get("wrap") or "article")
+    if wrap not in ("article", "report"):
+        raise IssueError("wrap must be article or report.")
 
-    path = ROOT / "posts" / f"{slug}.md"
-    meta = {}
-    if path.exists():
-        m = re.match(r"---\n(.*?)\n---\n", path.read_text(encoding="utf-8"), re.S)
-        meta = (yaml.safe_load(m.group(1)) or {}) if m else {}
+    old_path, meta = existing_post(slug)
     updating = bool(meta.get("date"))
     meta.update({"type": typ, "title": title, "summary": f["One-line summary"]})
     meta["techniques"] = techniques
@@ -202,20 +238,40 @@ def convert(issue, mode, today, get=fetch):
         meta["tool"] = tool
     else:
         meta.pop("tool", None)
-    if updating:
-        meta["updated"] = today
+    for k in ("incident", "playbooks", "allow"):
+        if k in extra:
+            meta[k] = extra[k]
+    if fmt == "html":
+        meta["wrap"] = wrap
+    else:
+        meta.pop("wrap", None)
+    if "date" in extra:
+        meta["date"] = check_date(extra["date"], "date")
+        if "updated" in extra:
+            meta["updated"] = check_date(extra["updated"], "updated")
+    elif updating:
+        meta["updated"] = extra.get("updated") and check_date(extra["updated"], "updated") or today
     else:
         meta["date"] = today
+        if "updated" in extra:
+            meta["updated"] = check_date(extra["updated"], "updated")
     order = ["type", "title", "date", "updated", "summary", "techniques", "tool"]
     meta = {k: meta[k] for k in order if k in meta} | {k: v for k, v in meta.items() if k not in order}
 
     post = re.sub(r"<!--.*?-->", "", f["Post (Markdown)"], flags=re.S).strip()
     if not post or all(l.startswith("#") or not l.strip() for l in post.split("\n")):
         raise IssueError("the post has no text yet: only headings, or nothing, is left once the hints are removed.")
-    text, n_images = pull_images(slug, post, get)
+    if fmt == "html":
+        text, n_images = post, 0
+        drop_unreferenced(slug, text)
+    else:
+        text, n_images = pull_images(slug, post, get)
     front = yaml.safe_dump({k: (str(v) if k in ("date", "updated") else v) for k, v in meta.items()},
                            sort_keys=False, allow_unicode=True, default_flow_style=None, width=1000)
-    path.write_text(f"---\n{front}---\n\n{text.strip()}\n", encoding="utf-8")
+    path = ROOT / "posts" / f"{slug}{'.html' if fmt == 'html' else '.md'}"
+    if old_path and old_path != path:
+        old_path.unlink()
+    path.write_text(f"---\n{front}---\n{'' if fmt == 'html' else chr(10)}{text.strip()}\n", encoding="utf-8")
     return {"slug": slug, "title": title, "images": n_images, "updating": updating}
 
 
@@ -225,19 +281,15 @@ def unpublish(issue):
     slug = f["Short name"]
     if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", slug) or slug in build.RESERVED:
         raise IssueError(f"short name “{slug}” is not valid.")
-    path = ROOT / "posts" / f"{slug}.md"
-    if not path.exists():
-        raise IssueError(f"there is no posts/{slug}.md. Posts made as HTML files can only be changed in the repository.")
-    m = re.match(r"---\n(.*?)\n---\n(.*)", path.read_text(encoding="utf-8"), re.S)
-    if not m:
-        raise IssueError(f"posts/{slug}.md has no front matter.")
-    meta = yaml.safe_load(m.group(1)) or {}
+    path, meta = existing_post(slug)
+    if not path:
+        raise IssueError(f"there is no post with the short name {slug}.")
     if not meta.get("date"):
         raise IssueError(f"{slug} is already a draft, nothing to unpublish.")
+    m = re.match(r"---\n(.*?)\n---\n(.*)", path.read_text(encoding="utf-8"), re.S)
     meta.pop("date", None)
     meta.pop("updated", None)
-    front = yaml.safe_dump({k: (str(v) if k == "updated" else v) for k, v in meta.items()}, sort_keys=False,
-                           allow_unicode=True, default_flow_style=None, width=1000)
+    front = yaml.safe_dump(meta, sort_keys=False, allow_unicode=True, default_flow_style=None, width=1000)
     path.write_text(f"---\n{front}date:\n---\n{m.group(2)}", encoding="utf-8")
     return {"slug": slug, "title": str(meta.get("title") or slug), "images": 0, "updating": True}
 
