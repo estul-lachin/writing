@@ -1,6 +1,5 @@
 name: New note
 description: "A how-to, an idea or an opinion. Short is fine."
-title: ""
 body:
   - type: markdown
     attributes:

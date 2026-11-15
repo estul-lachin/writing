@@ -1,6 +1,5 @@
 name: New investigation
 description: "Tracing one thing through a SIEM: the question, the queries, the answer."
-title: ""
 body:
   - type: markdown
     attributes:
