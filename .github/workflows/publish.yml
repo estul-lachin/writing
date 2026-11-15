@@ -1,0 +1,90 @@
+name: publish
+
+# Label an issue made from the "New post" form: "check" tests it, "publish" publishes it.
+# Only runs when the issue was opened by the repository owner and the label was added by the owner.
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: publish-writing
+  cancel-in-progress: false
+
+jobs:
+  post:
+    if: >-
+      (github.event.label.name == 'publish' || github.event.label.name == 'check')
+      && github.event.sender.login == github.repository_owner
+      && github.event.issue.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MODE: ${{ github.event.label.name }}
+      NUMBER: ${{ github.event.issue.number }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: main
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Convert the issue to a post
+        id: conv
+        run: |
+          gh issue view "$NUMBER" --repo "$REPO" --json title,body > issue.json
+          python tools/issue_to_post.py issue.json --mode "$MODE"
+
+      - name: Build and check for leaks
+        id: build
+        if: steps.conv.outputs.ok == 'true'
+        run: |
+          rc=0
+          python tools/build.py --check --site /tmp/site > build.log 2>&1 || rc=$?
+          echo "ok=$([ "$rc" -eq 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          if [ "$rc" -ne 0 ]; then
+            { echo 'Not published: the build check failed. Nothing was committed.'; echo; echo '```'; tail -n 30 build.log; echo '```'; echo; echo 'Fix the issue and add the label again.'; } > comment.md
+          fi
+
+      - name: Commit and deploy
+        id: commit
+        if: steps.build.outputs.ok == 'true' && env.MODE == 'publish'
+        env:
+          SLUG: ${{ steps.conv.outputs.slug }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add posts media
+          git commit -m "Publish $SLUG (issue #$NUMBER)"
+          git pull --rebase origin main
+          git push origin HEAD:main
+          # A push made with the workflow token does not start other workflows, so start the deploy by hand.
+          gh workflow run pages.yml --repo "$REPO" --ref main
+          echo "Published: https://uig.me/writing/$SLUG/ (live in 1 to 3 minutes)." > comment.md
+          echo "done=true" >> "$GITHUB_OUTPUT"
+
+      - name: Report back
+        if: always()
+        env:
+          SLUG: ${{ steps.conv.outputs.slug }}
+          BUILD_OK: ${{ steps.build.outputs.ok }}
+          DONE: ${{ steps.commit.outputs.done }}
+        run: |
+          if [ ! -f comment.md ]; then
+            if [ "$BUILD_OK" = "true" ] && [ "$MODE" = "check" ]; then
+              echo "Check passed. It would be published at https://uig.me/writing/$SLUG/. Add the label \`publish\` to publish it." > comment.md
+            else
+              echo "The run failed before finishing. See the Actions tab of this repository." > comment.md
+            fi
+          fi
+          gh issue comment "$NUMBER" --repo "$REPO" --body-file comment.md
+          gh issue edit "$NUMBER" --repo "$REPO" --remove-label "$MODE" || true
+          if [ "$DONE" = "true" ]; then gh issue close "$NUMBER" --repo "$REPO" || true; fi

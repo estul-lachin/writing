@@ -1,0 +1,23 @@
+name: labels
+
+# Creates the two labels the publish workflow listens for. Runs when the form or the workflow changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/ISSUE_TEMPLATE/**
+      - .github/workflows/publish.yml
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  labels:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - run: |
+          gh label create publish --repo "${{ github.repository }}" --color 0b5d56 --description "Publish this post" --force
+          gh label create check --repo "${{ github.repository }}" --color ededed --description "Test this post, do not publish" --force

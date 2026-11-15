@@ -17,6 +17,27 @@ mkdir -p /tmp/w && rm -rf /tmp/w/writing && cp -r _site /tmp/w/writing && python
 # open http://127.0.0.1:8000/writing/
 ```
 
+## Write from the browser (no Mac needed)
+
+1. github.com/estul-lachin/writing > Issues > New issue > **New post**. The issue title is the post title; fill the
+   short name, type and summary; write the post in Markdown and paste screenshots straight into the box.
+2. Save the issue, then add the label **check**. A bot builds the post and runs the privacy check, and comments
+   with the result. Nothing is published.
+3. Fix the issue text if it complained, then add the label **publish**. The bot commits `posts/<id>.md` and the
+   images, deploys, comments with the link and closes the issue.
+4. To change a published post, edit its issue (reopen it if needed) and add **publish** again: the date stays,
+   `updated` is set to today.
+
+The labels are removed again when the run ends, so adding one again always starts a new run. Only issues opened
+by the repository owner, with the label added by the owner, are ever processed.
+
+**An issue is public the moment it is saved, and so are the pictures pasted into it.** Defang addresses while
+writing, use only pseudonymized screenshots, and look at every picture before you paste it. If something slips
+in, delete the picture from the issue and the issue itself; the check does not read pictures.
+
+Branch protection note: if you turn on "require a pull request" for `main`, allow `github-actions` to bypass it,
+or the publish bot cannot push.
+
 A post can also be `posts/<id>.html`: the same front matter, then an HTML body that is used as it is, inside
 `<div class="report">` or `<div class="article">` (`wrap:` in the front matter). The older reports with hand-made
 tables and figures are kept that way.
@@ -38,6 +59,7 @@ The check reads text, not pictures: look at every screenshot before committing i
 
 - `posts/` the posts; files starting with `_` are ignored
 - `media/<id>/` a post's images
+- `tools/issue_to_post.py` turns a "New post" issue into a post; `.github/workflows/publish.yml` runs it
 - `site/` static files copied as they are (`style.css`, `favicon.svg`, `og-image.png`)
 - `tools/build.py` the generator; writes `_site/` (not committed)
 - `assets/og-image.html` source of the link preview image
