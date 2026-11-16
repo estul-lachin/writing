@@ -142,9 +142,9 @@ og_image: media/inc-001/og-inc-001.png
     Each visit did one narrow job and left. No visit downloaded anything, changed persistence or tried to escalate.</p>
   <div class="table-scroll"><table class="rt">
     <tr><th>Time (UTC)</th><th>Source</th><th>Commands after login</th><th>Most likely purpose</th><th>Incident</th></tr>
-    <tr><td class="t">11-16 04:06:08</td><td>118[.]36[.]203[.]94</td><td>None (only the system's login banner scripts)</td><td>Check the key still works. Same IP as the first key login on 11-14</td><td>Rule 100213 (just after the window)</td></tr>
-    <tr><td class="t">11-15 19:58:03</td><td>178[.]20[.]55[.]182</td><td><code>top -bn1</code></td><td>Check the miner is still running</td><td>#574, High</td></tr>
     <tr><td class="t">11-15 01:49:31</td><td>23[.]156[.]152[.]111</td><td><code>lscpu; free -m; cat /proc/loadavg; command -v wget curl busybox sh</code></td><td>Size up the machine: CPU, memory, load and which download tools exist</td><td>#525, High</td></tr>
+    <tr><td class="t">11-15 19:58:03</td><td>178[.]20[.]55[.]182</td><td><code>top -bn1</code></td><td>Check the miner is still running</td><td>#574, High</td></tr>
+    <tr><td class="t">11-16 04:06:08</td><td>118[.]36[.]203[.]94</td><td>None (only the system's login banner scripts)</td><td>Check the key still works. Same IP as the first key login on 11-14</td><td>Rule 100213 (just after the window)</td></tr>
   </table></div>
   <p>The miner itself kept running in the background session that started it on 11-14:</p>
   <ul>
