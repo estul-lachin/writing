@@ -2,6 +2,7 @@
 type: incident
 title: 'INC-001: Bait account compromised, cryptominer dropped'
 date: '2026-11-14'
+updated: '2026-11-16'
 summary: A botnet guessed a bait account on my Debian honeypot and planted a cryptominer. It never got root and no traffic got out.
 techniques: [T1110.001, T1078, T1053.003, T1098.004, T1496]
 wrap: report
@@ -9,29 +10,34 @@ wrap: report
 <section class="intro">
     <h1>INC-001: Bait account compromised, cryptominer dropped</h1>
     <p class="lead">Honeypot #2 · Incident date 2026-11-14 (UTC) · Analyst: Estul Lachin</p>
-    <p class="status">Interim report · observation period ends 2026-11-16 03:00 UTC</p>
+    <p class="status">Final report · updated 2026-11-16 · 48-hour observation closed 2026-11-16 03:00 UTC</p>
   </section>
 
   <h2 id="summary">Summary</h2>
   <p>At 00:40 UTC on 2026-11-14 a brute-force bot guessed the bait account <code>admin</code> / <code>admin</code> on Honeypot #2.
-    Two hours later a second botnet stage reused the credential, dropped the cryptominer <code>.dhpcd</code> and set up three kinds of persistence
+    Two hours later a second botnet stage reused the credential, pushed in the cryptominer <code>.dhpcd</code> and set up three kinds of persistence
     (cron, SSH keys, a changed password). The attacker <strong>never gained root</strong>, and <strong>no outbound connection succeeded</strong>:
     two layers of egress control blocked the mining pool, C2 and downloads, so the miner only burns CPU.</p>
-  <p>The incident is still under observation. The host will be isolated at once if the Wazuh agent goes offline, the victim probes the gateway (rule 100200), or any sign of root appears.</p>
+  <p>A 48-hour observation followed. The backdoor SSH key came back three times, from three different IP addresses; each visit only looked around
+    (hardware, running processes, whether the key still worked). There was no new payload, no new persistence and no root.
+    A new rule, 100213, turned every key login into a High incident automatically. The host was <strong>not cleaned</strong>: it moves into
+    phase 2 of the honeypot with a different weak bait password and will be rebuilt from a clean image afterwards.</p>
 
   <div class="table-scroll"><table class="rt">
     <tr><th>Item</th><th>Finding</th></tr>
     <tr><td>Severity</td><td>Medium (expected inside a honeypot; no data loss, no egress)</td></tr>
     <tr><td>Initial access</td><td>SSH weak password on the bait account <code>admin/admin</code></td></tr>
-    <tr><td>Objective</td><td>Cryptocurrency mining</td></tr>
+    <tr><td>Objective</td><td>Cryptocurrency mining (most likely an XMRig-based Monero miner)</td></tr>
     <tr><td>Privilege escalation</td><td>None; every privileged action failed (euid 1001)</td></tr>
     <tr><td>Egress</td><td>None; all outbound traffic blocked (GCP VPC firewall + host nftables)</td></tr>
     <tr><td>First detection</td><td>Wazuh rule 40112, level 12, found during manual review in Microsoft Sentinel</td></tr>
+    <tr><td>Follow-up detection</td><td>New rule 100213 (backdoor key used) raised a High incident for every return visit</td></tr>
+    <tr><td>Disposition</td><td>Not cleaned; kept for phase 2, then rebuilt from a clean image</td></tr>
   </table></div>
 
   <h2 id="at-a-glance">At a glance</h2>
   <figure>
-    <a href="media/inc-001/attack-chain-lanes.svg"><picture><source media="(max-width: 900px)" srcset="media/inc-001/attack-chain-narrow.svg" width="600" height="3098"><img src="media/inc-001/attack-chain-lanes.svg" width="1600" height="900" alt="INC-001 attack chain: ten attacker steps from brute force to mining, each with the defense result. 3 blocked, 2 detected live, 3 detected now by rules added that night, 1 evidence kept, 1 not stopped (files pushed in over SCP). Get in: 00:39 guesses the root password, blocked because root login is switched off; 00:40 guesses admin/admin, detected live by Wazuh rule 40112; 02:35 two more IPs log in with the shared password, detected now by rule 100210 (High). Set up: 02:35 pushes tools in over SCP, not stopped, the inbound copy was only logged; 02:37 tries to switch off defenses, blocked because the account has no root rights. Stay in: 02:40 plants its own SSH key, detected now by rule 100212; 02:41 a fourth IP logs in with that key, detected now by rule 100213 (High); 02:43 schedules the miner every hour, detected live by rule 100211. Cover tracks and profit: 02:43 deletes the dropper and script, evidence kept because both were archived at 02:39; from 02:43 the miner calls its mining pool, blocked, 10,684 tries and none got out. Never reached: root access, any outbound connection, any other host."></picture></a>
+    <a href="media/inc-001/attack-chain-lanes.svg"><picture><source media="(max-width: 900px)" srcset="media/inc-001/attack-chain-narrow.svg" width="600" height="3521"><img src="media/inc-001/attack-chain-lanes.svg" width="1600" height="1010" alt="INC-001 attack chain: ten attacker steps from brute force to mining, each with the defense result. 3 blocked, 2 detected live, 3 detected now by rules added that night, 1 evidence kept, 1 not stopped (files pushed in over SCP). Get in: 00:39 guesses the root password, blocked because root login is switched off; 00:40 guesses admin/admin, detected live by Wazuh rule 40112; 02:35 two more IPs log in with the shared password, detected now by rule 100210 (High). Set up: 02:35 pushes tools in over SCP, not stopped, the inbound copy was only logged; 02:37 tries to switch off defenses, blocked because the account has no root rights. Stay in: 02:40 plants its own SSH key, detected now by rule 100212; 02:41 a fourth IP logs in with that key, detected now by rule 100213 (High); 02:43 schedules the miner every hour, detected live by rule 100211. Cover tracks and profit: 02:43 deletes the dropper and script, evidence kept because both were archived at 02:39; from 02:43 the miner calls its mining pool, blocked, 10,684 tries and none got out. After: in the 48-hour observation the planted key was used 3 more times, by 23[.]156[.]152[.]111, 178[.]20[.]55[.]182 and then 118[.]36[.]203[.]94 again; visitors only looked around, rule 100213 caught every visit, and there was no new payload, persistence or root. Never reached, then or in the next 48 hours: root access, any outbound connection, any other host."></picture></a>
     <figcaption>Figure 1. What the attacker did, and what blocked or caught each step. "Detected now" marks a rule written the same night, after this incident exposed the gap.</figcaption>
   </figure>
 
@@ -65,7 +71,7 @@ wrap: report
   </table></div>
 
   <h2 id="timeline">Timeline (UTC, 2026-11-14)</h2>
-  <p>Four different IP addresses worked in relay. Everything was automated; the core deployment took about 8 minutes.</p>
+  <p>Four different IP addresses worked in relay; the fourth logged in with the backdoor key the script had just planted. Everything was automated; the core deployment took about 8 minutes.</p>
   <figure>
     <a href="media/inc-001/ip-relay.png"><img src="media/inc-001/ip-relay.png" width="1122" height="764" loading="lazy" alt="Sentinel results, 00:39 to 02:42 UTC, one row per source, account and Wazuh rule. 121[.]167[.]150[.]214 fails 18 root logins (rules 5760, 5758, 5763), then logs in as admin at 00:40:33 (rule 40112). Five unrelated scanners only try root. 169[.]211[.]173[.]89 at 02:35:18 and 51[.]15[.]116[.]168 at 02:35:50 log in as admin on the first try, and 118[.]36[.]203[.]94 logs in as admin at 02:41:02 (rule 5715)."></a>
     <figcaption>Figure 2. Logins and failed logins for <code>admin</code> and <code>root</code>, 00:39–02:42 UTC, one row per source address, account and Wazuh rule. Group 3 is unrelated background scanning. Tap or click the image to enlarge.</figcaption>
@@ -86,7 +92,7 @@ wrap: report
     <tr><td class="t">02:35:17</td><td>169[.]211[.]173[.]89</td><td>Logs in as <code>admin</code> on the first try (keyboard-interactive)</td><td>journal</td></tr>
     <tr><td class="t">02:35:49</td><td>51[.]15[.]116[.]168</td><td>Logs in on the first try, no TTY (<code>admin@notty</code>); every later action comes from this session</td><td>journal; <code>ps</code></td></tr>
     <tr><td class="t">02:35:52</td><td>51[.]15[.]116[.]168</td><td>Reconnaissance with <code>top -bn1</code></td><td>auditd</td></tr>
-    <tr><td class="t">02:35:56</td><td>script</td><td>Uploads and runs dropper <code>nihnukjzydh94kwvu7bntugv8o</code> (116 KB)</td><td>auditd</td></tr>
+    <tr><td class="t">02:35:56</td><td>script</td><td>Pushes the dropper <code>nihnukjzydh94kwvu7bntugv8o</code> (116 KB) in over SCP (<code>scp -t</code>) and runs it</td><td>auditd; Wazuh 92603</td></tr>
     <tr><td class="t">02:36:36–02:37:27</td><td>script</td><td><code>mktemp</code> → <code>crontab</code> → <code>rm</code>: first cron write</td><td>FIM whodata</td></tr>
     <tr><td class="t">02:37:02–02:37:28</td><td>script</td><td>Tries <code>chattr -i</code> + <code>rm</code> on Google guest agent binaries; walks <code>/proc/*/exe</code> to kill competing miners</td><td>auditd; Wazuh 204</td></tr>
     <tr><td class="t">02:38:55</td><td>script</td><td>Starts the miner <code>/home/admin/.dhpcd</code> (first build, 46 KB)</td><td><code>ps</code></td></tr>
@@ -94,13 +100,14 @@ wrap: report
     <tr><td class="t">02:39:56</td><td>script</td><td>Runs bash script <code>bpzs0l93v4vc1lm9cgfxk6y9tl</code>; tries <code>mv /usr/bin/ips /usr/bin/ps</code> to replace <code>ps</code></td><td>auditd</td></tr>
     <tr><td class="t">02:40:22–02:40:44</td><td>script</td><td>Redeploys <code>.dhpcd</code>; tries to change passwords of ubuntu, user, test, oracle, ftpuser and others (all fail)</td><td>auditd</td></tr>
     <tr><td class="t">02:40:45–02:40:54</td><td>script</td><td>Writes two RSA keys to <code>/home/admin/.ssh/authorized_keys</code></td><td>auditd</td></tr>
-    <tr><td class="t">02:41:02</td><td>118[.]36[.]203[.]94</td><td>Logs in as <code>admin</code> with one of the planted keys, seconds after they were written: the backdoor works without the password</td><td>Wazuh 5715</td></tr>
+    <tr><td class="t">02:41:02</td><td>118[.]36[.]203[.]94</td><td>Logs in as <code>admin</code> with one of the new keys (<code>SHA256:P7d7T…</code>), seconds after it was written, and leaves the session idle: the backdoor works</td><td>journal; Wazuh 5715</td></tr>
     <tr><td class="t">02:41:10</td><td>script</td><td><code>netstat -plnt</code>; another cron change</td><td>auditd; Wazuh 100211</td></tr>
     <tr><td class="t">02:43:13</td><td>script</td><td>Swaps in a second <code>.dhpcd</code> build (2.3 MB) and starts it</td><td>auditd</td></tr>
     <tr><td class="t">02:43:39</td><td>script</td><td>Final cron entry: <code>35 * * * * /home/admin/.dhpcd</code></td><td>Wazuh 100211</td></tr>
-    <tr><td class="t">03:35, 04:35</td><td>cron</td><td>Hourly relaunch of <code>.dhpcd</code> (exits if already running)</td><td>auditd</td></tr>
+    <tr><td class="t">02:43:42</td><td>script</td><td>Deletes the dropper and the bash script to clean up; both were already preserved in the 02:39 evidence archive</td><td>auditd; FIM</td></tr>
+    <tr><td class="t">Every hour at :35</td><td>cron</td><td>Hourly relaunch of <code>.dhpcd</code> (exits if already running)</td><td>auditd</td></tr>
   </table></div>
-  <p>Outbound attempts ran continuously from 02:35 onward; the nftables tripwire blocked every one (rule 100201).</p>
+  <p>Outbound attempts ran continuously from 02:35 onward; the nftables tripwire blocked every one (rule 100201). Between 02:35 and 15:36 it blocked 10,785 attempts, 10,684 of them to the miner's two port-443 targets (see <a href="#impact">Impact assessment</a>).</p>
   <figure>
     <a href="media/inc-001/stage1-drop-and-run.png"><img src="media/inc-001/stage1-drop-and-run.png" width="644" height="907" loading="lazy" alt="Stage 1, 02:35 to 02:37 UTC, commands run by the bait account: top -bn1; scp -t copies the dropper nihnukjzydh94kwvu7bntugv8o and the script bpzs0l93v4vc1lm9cgfxk6y9tl into /home/admin; the dropper is run, deleted, copied in again and rerun; chattr -i and rm -f on Google guest agent binaries in /usr/bin, which fail without root; grep for ps, ss, lsof and netstat."></a>
     <figcaption>Figure 3. Stage 1, 02:35–02:37 UTC: the tools are copied in over the SSH login and started.</figcaption>
@@ -129,23 +136,42 @@ wrap: report
 | order by TimeGenerated asc</code></pre>
   </details>
 
+  <h2 id="observation">Observation period (48 hours)</h2>
+  <p>From 2026-11-14 02:43 to 2026-11-16 03:00 UTC the host was left as the attacker set it up. The backdoor key came back twice in that window, from two new IP addresses, and once more just after it from the IP that first used it.
+    Each visit did one narrow job and left. No visit downloaded anything, changed persistence or tried to escalate.</p>
+  <div class="table-scroll"><table class="rt">
+    <tr><th>Time (UTC)</th><th>Source</th><th>Commands after login</th><th>Most likely purpose</th><th>Incident</th></tr>
+    <tr><td class="t">11-16 04:06:08</td><td>118[.]36[.]203[.]94</td><td>None (only the system's login banner scripts)</td><td>Check the key still works. Same IP as the first key login on 11-14</td><td>Rule 100213 (just after the window)</td></tr>
+    <tr><td class="t">11-15 19:58:03</td><td>178[.]20[.]55[.]182</td><td><code>top -bn1</code></td><td>Check the miner is still running</td><td>#574, High</td></tr>
+    <tr><td class="t">11-15 01:49:31</td><td>23[.]156[.]152[.]111</td><td><code>lscpu; free -m; cat /proc/loadavg; command -v wget curl busybox sh</code></td><td>Size up the machine: CPU, memory, load and which download tools exist</td><td>#525, High</td></tr>
+  </table></div>
+  <p>The miner itself kept running in the background session that started it on 11-14:</p>
+  <ul>
+    <li>Cron relaunched <code>.dhpcd</code> every hour at :35 for the full 48 hours.</li>
+    <li>At 02:36:47 on 11-16 it restarted itself once, outside the cron schedule.</li>
+    <li>At 04:06:09 on 11-16 it ran <code>/sbin/modprobe msr allow_writes=on</code>. XMRig does this to unlock CPU model-specific registers for faster RandomX mining. Running as uid 1001, it cannot succeed. It came one second after the 04:06:08 login, but the logs show no link between the two.</li>
+  </ul>
+  <p>What did not happen: no change to cron or <code>authorized_keys</code> (rule 100211 fired only on 11-14, rule 100212 only on our own test); no rule 100200; every attacker command ran as uid and euid 1001.
+    The uid 0 entries at each login are sshd running the login banner scripts as root, which is normal.</p>
+
   <h2 id="attack">Attacker behavior and MITRE ATT&amp;CK</h2>
   <p>This is a typical staged mining botnet: one node only brute-forces and validates credentials into a shared list, another logs in with that list and deploys.
     The script never checks its own privileges; it blindly runs root-only steps too.</p>
   <div class="table-scroll"><table class="rt">
     <tr><th>Tactic</th><th>Technique</th><th>Observed</th></tr>
     <tr><td>Credential Access</td><td><a href="https://attack.mitre.org/techniques/T1110/001/">T1110.001</a> Password Guessing</td><td>Brute force of root, then <code>admin/admin</code></td></tr>
-    <tr><td>Initial Access</td><td><a href="https://attack.mitre.org/techniques/T1078/">T1078</a> Valid Accounts</td><td>Two more IPs log in on the first try with the harvested credential</td></tr>
+    <tr><td>Initial Access</td><td><a href="https://attack.mitre.org/techniques/T1078/">T1078</a> Valid Accounts</td><td>Two more IPs log in on the first try with the harvested credential; later, three IPs log in with the planted SSH key</td></tr>
     <tr><td>Discovery</td><td><a href="https://attack.mitre.org/techniques/T1057/">T1057</a> Process Discovery; <a href="https://attack.mitre.org/techniques/T1049/">T1049</a> Network Connections Discovery</td><td><code>top -bn1</code>, walking <code>/proc/*/exe</code>, <code>netstat -plnt</code></td></tr>
     <tr><td>Execution</td><td><a href="https://attack.mitre.org/techniques/T1059/004/">T1059.004</a> Unix Shell</td><td>Commands run one by one through <code>bash -c</code>; a bash deployment script</td></tr>
-    <tr><td>Command and Control</td><td><a href="https://attack.mitre.org/techniques/T1105/">T1105</a> Ingress Tool Transfer</td><td>Dropper and miner pushed through the SSH session; outbound downloads blocked</td></tr>
+    <tr><td>Command and Control</td><td><a href="https://attack.mitre.org/techniques/T1105/">T1105</a> Ingress Tool Transfer</td><td>Dropper and miner pushed in over SCP inside the SSH session; outbound downloads blocked</td></tr>
     <tr><td>Persistence</td><td><a href="https://attack.mitre.org/techniques/T1053/003/">T1053.003</a> Cron</td><td><code>35 * * * * /home/admin/.dhpcd</code></td></tr>
     <tr><td>Persistence</td><td><a href="https://attack.mitre.org/techniques/T1098/004/">T1098.004</a> SSH Authorized Keys</td><td>Two RSA keys added; a fourth IP logged in with one of them seconds later</td></tr>
     <tr><td>Persistence</td><td><a href="https://attack.mitre.org/techniques/T1098/">T1098</a> Account Manipulation</td><td><code>admin</code> password changed to lock out rival botnets</td></tr>
     <tr><td>Defense Evasion</td><td><a href="https://attack.mitre.org/techniques/T1036/">T1036</a> Masquerading</td><td><code>.dhpcd</code> imitates the DHCP client <code>dhcpcd</code>; leading dot hides it</td></tr>
     <tr><td>Defense Evasion</td><td><a href="https://attack.mitre.org/techniques/T1222/002/">T1222.002</a> Linux File Permissions Modification</td><td><code>chattr -i/-a</code> and <code>chattr +a /etc/shadow</code> (failed)</td></tr>
     <tr><td>Defense Evasion</td><td><a href="https://attack.mitre.org/techniques/T1562/001/">T1562.001</a> Disable or Modify Tools</td><td>Tried to delete guest agent binaries and replace <code>ps</code> (failed)</td></tr>
-    <tr><td>Impact</td><td><a href="https://attack.mitre.org/techniques/T1496/">T1496</a> Resource Hijacking</td><td>Miner uses about 50% CPU and 271 MB RAM</td></tr>
+    <tr><td>Defense Evasion</td><td><a href="https://attack.mitre.org/techniques/T1070/004/">T1070.004</a> File Deletion</td><td>Deleted the dropper and bash script at 02:43:42</td></tr>
+    <tr><td>Impact</td><td><a href="https://attack.mitre.org/techniques/T1496/">T1496</a> Resource Hijacking</td><td>Miner uses about 50% CPU and 271 MB RAM; tried <code>modprobe msr</code> to boost its hash rate (failed)</td></tr>
   </table></div>
 
   <h2 id="impact">Impact assessment</h2>
@@ -156,7 +182,15 @@ wrap: report
     <li><code>passwd</code> shows euid 0 because it is a SUID-root program; it checks the real uid before changing anyone else's password, so this is not evidence of escalation. The attacker could only change its own <code>admin</code> password; ubuntu, test and the other targets do not exist on the host.</li>
     <li><code>/etc/shadow</code> carries only the normal ext4 <code>e</code> attribute; <code>chattr +a</code> never took effect.</li>
   </ul>
-  <p><strong>Egress: none.</strong> After 02:35 the tripwire recorded outbound attempts only to 107[.]167[.]83[.]34 (ports 80 and 443) and 141[.]94[.]96[.]71, 141[.]94[.]96[.]144 and 141[.]94[.]96[.]195 (port 80). All were blocked: the miner cannot reach its pool and the host was not used to attack anyone.</p>
+  <p><strong>Egress: none.</strong> Between 02:35 and 15:36 the tripwire blocked 10,785 outbound attempts. Not one succeeded:</p>
+  <div class="table-scroll"><table class="rt">
+    <tr><th>Destination</th><th>Attempts</th><th>Most likely</th></tr>
+    <tr><td><code>107[.]167[.]92[.]130</code>:443</td><td>5,411</td><td>Mining pool or C2</td></tr>
+    <tr><td><code>107[.]167[.]83[.]34</code>:443</td><td>5,273</td><td>Mining pool or C2</td></tr>
+    <tr><td><code>141[.]94[.]96[.]71</code>, <code>.144</code>, <code>.195</code> and <code>107[.]167[.]x[.]x</code> on port 80</td><td>60</td><td>HTTP download attempts</td></tr>
+    <tr><td>Other (Fastly, Google)</td><td>41</td><td>The system's own traffic: Debian updates and Google services</td></tr>
+  </table></div>
+  <p>That is 10,684 attempts to reach the pool. The egress rules did not change during the observation period, so the miner never reached its pool and the host was not used to attack anyone.</p>
   <figure>
     <a href="media/inc-001/egress-blocked.png"><img src="media/inc-001/egress-blocked.png" width="682" height="982" loading="lazy" alt="Blocked outbound connections by destination, 02:35 to 15:36 UTC, 10,785 in all. Attacker traffic: 107[.]167[.]92[.]130:443 (5,411) and 107[.]167[.]83[.]34:443 (5,273), the miner calling its pool; port 80 download attempts between 02:39 and 02:44 to 141[.]94[.]96[.]195, 107[.]167[.]83[.]34, 141[.]94[.]96[.]71, 141[.]94[.]96[.]144 and 107[.]167[.]92[.]130. The server's own traffic, also blocked: 151[.]101[.]x[.]132:443 at 06:37, most likely Debian's update check, and 172[.]217[.]x[.]4:443 every 15 minutes, most likely a Google Cloud agent."></a>
     <figcaption>Figure 6. Every outbound connection the victim tried, 02:35–15:36 UTC, by destination: all were dropped by the nftables tripwire (rule 100201).
@@ -180,9 +214,12 @@ wrap: report
     <tr><td>IPv4</td><td><code>121[.]167[.]150[.]214</code></td><td>Brute force and credential validation</td></tr>
     <tr><td>IPv4</td><td><code>169[.]211[.]173[.]89</code></td><td>Login with harvested credential</td></tr>
     <tr><td>IPv4</td><td><code>51[.]15[.]116[.]168</code></td><td>Deployment and operator session</td></tr>
-    <tr><td>IPv4</td><td><code>118[.]36[.]203[.]94</code></td><td>Login with the planted SSH key (backdoor use)</td></tr>
-    <tr><td>IPv4</td><td><code>107[.]167[.]83[.]34</code> (80, 443)</td><td>Outbound target, blocked</td></tr>
-    <tr><td>IPv4</td><td><code>141[.]94[.]96[.]71</code>, <code>141[.]94[.]96[.]144</code>, <code>141[.]94[.]96[.]195</code> (80)</td><td>Outbound targets, blocked</td></tr>
+    <tr><td>IPv4</td><td><code>118[.]36[.]203[.]94</code></td><td>Backdoor key logins (11-14 02:41, 11-16 04:06)</td></tr>
+    <tr><td>IPv4</td><td><code>23[.]156[.]152[.]111</code></td><td>Backdoor key login, machine survey (11-15 01:49)</td></tr>
+    <tr><td>IPv4</td><td><code>178[.]20[.]55[.]182</code></td><td>Backdoor key login, process check (11-15 19:58)</td></tr>
+    <tr><td>IPv4</td><td><code>107[.]167[.]92[.]130</code> (443)</td><td>Mining pool or C2, blocked (5,411 attempts)</td></tr>
+    <tr><td>IPv4</td><td><code>107[.]167[.]83[.]34</code> (443, also 80)</td><td>Mining pool or C2, blocked (5,273 attempts)</td></tr>
+    <tr><td>IPv4</td><td><code>141[.]94[.]96[.]71</code>, <code>141[.]94[.]96[.]144</code>, <code>141[.]94[.]96[.]195</code> (80)</td><td>HTTP download targets, blocked</td></tr>
     <tr><td>SHA256</td><td><code class="h">6a43f59bdc17c0cb34bff1d34e0650913290755f6e9773cbd1e6ef91a6e86c5f</code></td><td><code>.dhpcd</code>, second build (2,373,616 bytes)</td></tr>
     <tr><td>File</td><td><code>/home/admin/.dhpcd</code></td><td>Miner (first build 46,560 bytes)</td></tr>
     <tr><td>File</td><td><code>/home/admin/nihnukjzydh94kwvu7bntugv8o</code></td><td>Dropper (116,816 bytes)</td></tr>
@@ -198,8 +235,10 @@ wrap: report
     <li><strong>Read-only triage.</strong> Logged in over the WireGuard management channel and used only read-only commands (<code>who</code>, <code>ss</code>, <code>ps</code>, <code>ls</code>, <code>journalctl</code>). The command history came from Wazuh alerts on the gateway, not from <code>ausearch</code> on the victim.</li>
     <li><strong>Evidence preservation.</strong> Two archives of <code>/home/admin</code>, the cron spool and <code>/tmp/tmp.*</code> were copied to the gateway and hashed. They are never extracted or executed.</li>
     <li><strong>Protect the monitoring.</strong> All five Wazuh agent processes run with <code>oom_score_adj=-900</code> (persisted with a systemd drop-in); the management sshd already runs at -1000.</li>
-    <li><strong>Keep the state for 48 hours.</strong> The changed <code>admin</code> password stays in place so this group's return pattern can be observed; afterwards the password goes back to <code>admin</code> to reopen the honeypot.</li>
+    <li><strong>Keep the state for 48 hours.</strong> The changed <code>admin</code> password stayed in place so this group's return pattern could be observed. Completed 2026-11-16 03:00 UTC; see <a href="#observation">Observation period</a>.</li>
   </ol>
+  <p><strong>Disposition: not cleaned, kept for phase 2, then rebuilt.</strong> On 2026-11-16 the <code>admin</code> password was reset to another common weak password from public wordlists, so new attackers can get in too.
+    The miner, the cron entry and the backdoor keys stay in place, so the original group can still log in. When phase 2 ends, the victim is rebuilt from a clean image against the recorded baseline instead of being cleaned in place.</p>
   <div class="table-scroll"><table class="rt">
     <tr><th>Archive</th><th>Time (UTC)</th><th>SHA256</th><th>Contents</th></tr>
     <tr><td><code class="h">hp2-inc001-20261114T023929Z.tgz</code></td><td class="t">02:39:29</td><td><code class="h">913c08dda448eb02075ff6cc7d7a00a26b67f8df3fced9c76909a87b05c8cf21</code></td><td>First <code>.dhpcd</code> build, dropper, bash script, crontab, temp file</td></tr>
@@ -208,19 +247,23 @@ wrap: report
   <p>Isolation triggers (any one): the Wazuh agent or management sshd goes offline; rule 100200 fires (victim probes the gateway); any sign of root, such as euid 0 on a non-SUID command or a change to <code>/etc/ld.so.preload</code>.</p>
 
   <h2 id="improvements">Detection improvements</h2>
-  <p>All four gaps were fixed the same night, a Sentinel analytics rule went live, and a controlled cron change verified the whole chain. The next attacker who logs in with a harvested password now raises a High incident within about 25 minutes.</p>
+  <p>All four gaps were fixed the same night, a Sentinel analytics rule went live, and a controlled cron change verified the whole chain. The next day added detection for the backdoor key and the bait home directory. The next attacker who logs in with a harvested password now raises a High incident within about 25 minutes.</p>
   <div class="table-scroll"><table class="rt">
     <tr><th>ID</th><th>Change</th><th>Verification</th></tr>
     <tr><td>100210</td><td>New rule, level 13: <code>admin</code> logs in with <code>Accepted password</code> or <code>Accepted keyboard-interactive</code>, whether or not failures came first</td><td><code>wazuh-logtest</code>: both log formats hit 100210 at level 13</td></tr>
     <tr><td>100211</td><td>New rule, level 12: any add, change or delete under <code>/var/spool/cron</code> or <code>/etc/cron*</code> (if_sid 550/553/554)</td><td>Fired on the attacker's cron writes at 02:41 and 02:43; fired on the self-test</td></tr>
     <tr><td>Agent buffer</td><td><code>client_buffer</code> <code>queue_size</code> raised from 5,000 to 50,000; 500 events per second unchanged</td><td>Agent active after restart; all processes at <code>oom_score_adj=-900</code></td></tr>
     <tr><td>Sentinel rule</td><td>Scheduled every 15 minutes on <code>rule_level &gt;= 12</code>, deduplicated by <code>ingestion_time()</code>; IP and Host entities; level 13+ is High</td><td>Self-test raised incident #475 (one incident, two alerts), closed as Benign Positive</td></tr>
+    <tr><td>100212</td><td>New rule, level 12: any file change under <code>/home/admin/</code> (FIM with whodata)</td><td>Controlled test raised incident #483, closed</td></tr>
+    <tr><td>100213</td><td>New rule, level 13: <code>admin</code> logs in with <code>Accepted publickey</code>, meaning the backdoor key is in use</td><td>Raised High incidents #525 and #574 for the two return visits in the window, and fired again at 04:06 on 11-16</td></tr>
+    <tr><td>Upload script</td><td>Alerts at level 10+ bypass the 20 MB daily upload budget; tripwire noise (rule 100201) is sent once per rule, destination IP and port per hour</td><td>15 unit tests pass; first run after deploy suppressed 111 repeated noise alerts</td></tr>
+    <tr><td>Duplicate fix</td><td>The analytics rule's <code>ingestion_time()</code> window now has an upper bound (<code>&lt;= now()</code>), so adjacent runs no longer report the same record</td><td>Later incidents carry one alert each</td></tr>
   </table></div>
   <p>The threshold moved from the planned 10 to 12: rule 2502 (level 10) fires about every 7 minutes from constant scanning and would have raised about 200 incidents a day.</p>
   <p>The self-test also showed:</p>
   <ul>
     <li>Latency: an event reaches Sentinel in about 9.5 minutes and becomes an alert about 12 minutes later, about 25 minutes end to end.</li>
-    <li>Duplicate alerts: one record was caught by two consecutive runs near a window edge, but entity grouping merged them into a single incident. Accepted as known behavior.</li>
+    <li>Duplicate alerts: one record was caught by two consecutive runs near a window edge; entity grouping merged them into a single incident. Since fixed with an upper bound on the window.</li>
     <li>Playbook: the enrichment playbook ended as Cancelled after 254 ms on this incident, which has no IP entity. That matches its "skip when there is no IP" design.</li>
   </ul>
   <p>Processes started by cron are also logged: Debian's cron goes through PAM, and <code>pam_loginuid</code> sets the audit uid to 1001, which matches the auditd rule <code>auid&gt;=1000</code>.</p>
@@ -233,20 +276,24 @@ wrap: report
     <li>Logs off the host: the privilege-escalation verdict rests on auditd records stored on the gateway, out of the attacker's reach.</li>
     <li>FIM whodata named the exact process, user and change (<code>mktemp</code> → <code>crontab</code> → <code>rm</code>).</li>
     <li>Isolation followed predefined triggers instead of pulling the plug on sight.</li>
+    <li>Rule 100213, added during the observation, paid off at once: every backdoor-key visit became a High incident without anyone watching.</li>
   </ul>
   <h3>What to improve</h3>
   <ul>
     <li>Discovery relied on manual review and took about 2 hours. An analytics rule now covers it.</li>
     <li>Test new rules against real log samples: the first version of 100210 matched only <code>Accepted password</code> and would have missed keyboard-interactive logins.</li>
     <li>Do not judge escalation by euid alone: SUID programs such as <code>passwd</code> always run with euid 0.</li>
+    <li>Egress blocking does not stop inbound pushes: the payload came in over SCP inside the attacker's own SSH session, with no download from the victim. Catching a payload landing needs inbound-side detection (FIM, rule 92603).</li>
+    <li>A noise budget must respect priority: repeated tripwire noise could crowd high-severity alerts out of the daily upload budget, so level 10+ alerts are now exempt.</li>
+    <li>Changing the password does not evict this attacker: the planted key is shared by at least three IPs. In a real environment, response must remove <code>authorized_keys</code> entries and cron jobs too.</li>
   </ul>
   <h3>Next steps</h3>
   <ul>
-    <li>After the observation period (2026-11-16 03:00 UTC), reset the <code>admin</code> password to <code>admin</code> and start phase 2: competing botnets.</li>
-    <li>Record SSH-key returns (time, source IP), payload updates and new outbound targets, then update this report.</li>
-    <li>Extend FIM to new or changed executables under <code>/home/admin</code>.</li>
+    <li>Done: the observation period closed, the findings are in this report, FIM now covers <code>/home/admin</code> (rule 100212), and phase 2 started with a new weak bait password.</li>
+    <li>Look up the <code>.dhpcd</code> SHA256 on VirusTotal (hash only, no upload) to confirm the miner family.</li>
     <li>Map ATT&amp;CK tactics per Wazuh rule in the analytics rule, instead of the static list every alert carries today.</li>
-    <li>Final rebuild of the victim from a clean image against the recorded baseline.</li>
+    <li>Tag tripwire logs with the owning process, to separate miner traffic from the system's own.</li>
+    <li>When phase 2 ends, rebuild the victim from a clean image against the recorded baseline.</li>
   </ul>
 
   <h2 id="screenshots">Screenshots</h2>
@@ -275,7 +322,7 @@ wrap: report
   </figure>
   <figure>
     <a href="media/inc-001/security-alert.png"><img src="media/inc-001/security-alert.png" width="1600" height="1131" loading="lazy" alt="SecurityAlert table showing two HP2 rule 100211 alerts."></a>
-    <figcaption>Figure 10. Alerts raised by the analytics rule: the same event alerted at 04:52 and 05:07 (duplicate across adjacent windows).</figcaption>
+    <figcaption>Figure 10. Alerts raised by the analytics rule: the same event alerted at 04:52 and 05:07 (duplicate across adjacent windows, since fixed).</figcaption>
   </figure>
   <figure>
     <a href="media/inc-001/incident-475-closed.png"><img src="media/inc-001/incident-475-closed.png" width="794" height="997" loading="lazy" alt="Sentinel incident 475, HP2 rule 100211 on web01, status Closed, reason Benign Positive: HP2 pipeline self-test. Two alerts merged into one incident by the host entity web01. Similar incident 483, the self-test of rule 100212, is also closed as Benign Positive. Portal display set to UTC."></a>
