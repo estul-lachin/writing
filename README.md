@@ -50,6 +50,10 @@ A post can also be `posts/<id>.html`: the same front matter, then an HTML body t
 `<div class="report">` or `<div class="article">` (`wrap:` in the front matter). The older reports with hand-made
 tables and figures are kept that way.
 
+A post's link preview is the site's `og-image.png` unless its front matter (or the issue's `---` block) has
+`og_image: media/<id>/<name>.png` (or `.jpg`): a file already in that post's media folder. The publish bot keeps that
+file even though the post text does not link it; take the line out of the issue and the file goes too.
+
 ## Privacy check
 
 Everything here is public. `--check` fails the build when a page shows a public IP address, an email address or a
@@ -70,4 +74,5 @@ The check reads text, not pictures: look at every screenshot before committing i
 - `tools/issue_to_post.py` turns a post-form issue into a post; `.github/workflows/publish.yml` runs it
 - `site/` static files copied as they are (`style.css`, `favicon.svg`, `og-image.png`)
 - `tools/build.py` the generator; writes `_site/` (not committed)
+- `tests/` unit tests: `python -m unittest discover -s tests` (run by the pages workflow before the build)
 - `assets/og-image.html` source of the link preview image

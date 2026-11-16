@@ -36,7 +36,7 @@ class IssueError(Exception):
     pass
 
 
-EXTRA_KEYS = ("date", "updated", "incident", "playbooks", "allow", "wrap", "format")
+EXTRA_KEYS = ("date", "updated", "incident", "playbooks", "allow", "wrap", "format", "og_image")
 
 PLAIN_HELP = """To publish from a plain issue, start the text with these lines (the issue title is the post title):
 
@@ -51,7 +51,8 @@ tool: splunk
 ```
 
 (optional extras: `date: 2026-11-14` keeps an original date, `format: html` with `wrap: report` or `article` for a
-hand-made HTML post, `allow: [value]` for something the privacy check should let through) then write the post under them. `type` is incident, investigation or note; `techniques` and `tool` are optional.
+hand-made HTML post, `allow: [value]` for something the privacy check should let through, `og_image:
+media/my-post-name/preview.png` for the post's own link preview image, already in the repository) then write the post under them. `type` is incident, investigation or note; `techniques` and `tool` are optional.
 The forms at """ + build.REPO + """/issues/new?template=note.yml (or investigation.yml, incident.yml) fill this in for you."""
 
 
@@ -127,7 +128,7 @@ def file_slug(text):
     return s or "screenshot"
 
 
-def pull_images(slug, text, get=fetch):
+def pull_images(slug, text, get=fetch, keep=()):
     """Download every pasted image into media/<slug>/ and point the text at it."""
     img_dir = ROOT / "media" / slug
 
@@ -167,15 +168,16 @@ def pull_images(slug, text, get=fetch):
         return f"![{alt}](media/{slug}/{name})"
 
     text = re.sub(r'!\[([^\]]*)\]\((\S+?)(?:\s+"[^"]*")?\)', one, text)
-    drop_unreferenced(slug, text)
+    drop_unreferenced(slug, text, keep)
     return text, count
 
 
-def drop_unreferenced(slug, text):
-    """Images left over from an earlier version of this post, no longer used by the text, are removed."""
+def drop_unreferenced(slug, text, keep=()):
+    """Images left over from an earlier version of this post, no longer used by the text, are removed.
+    keep: other media/<slug>/... paths the post uses outside its text (its og_image)."""
     img_dir = ROOT / "media" / slug
     if img_dir.is_dir():
-        used = set(re.findall(r"media/" + re.escape(slug) + r"/([^\s\"')>]+)", text))
+        used = set(re.findall(r"media/" + re.escape(slug) + r"/([^\s\"')>]+)", " ".join([text, *keep])))
         for f in img_dir.iterdir():
             if f.name not in used:
                 f.unlink()
@@ -241,6 +243,17 @@ def convert(issue, mode, today, get=fetch):
     for k in ("incident", "playbooks", "allow"):
         if k in extra:
             meta[k] = extra[k]
+    try:
+        og_image = build.og_image_path(extra.get("og_image"), slug, "og_image")
+    except build.SourceError as ex:
+        raise IssueError(str(ex))
+    if og_image:
+        if not (ROOT / og_image).is_file():
+            raise IssueError(f"og_image {og_image} is not in the repository. Add the file there first.")
+        meta["og_image"] = og_image
+    else:
+        meta.pop("og_image", None)
+    keep = [og_image] if og_image else []
     if fmt == "html":
         meta["wrap"] = wrap
     else:
@@ -263,9 +276,9 @@ def convert(issue, mode, today, get=fetch):
         raise IssueError("the post has no text yet: only headings, or nothing, is left once the hints are removed.")
     if fmt == "html":
         text, n_images = post, 0
-        drop_unreferenced(slug, text)
+        drop_unreferenced(slug, text, keep)
     else:
-        text, n_images = pull_images(slug, post, get)
+        text, n_images = pull_images(slug, post, get, keep)
     front = yaml.safe_dump({k: (str(v) if k in ("date", "updated") else v) for k, v in meta.items()},
                            sort_keys=False, allow_unicode=True, default_flow_style=None, width=1000)
     path = ROOT / "posts" / f"{slug}{'.html' if fmt == 'html' else '.md'}"

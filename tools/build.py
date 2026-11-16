@@ -17,6 +17,7 @@ Front matter:
   playbooks:    ids of uig.me/investigations playbooks used (optional)
   allow:        public IPs or emails this post may show undefanged, e.g. a mail relay in a how-to (optional)
   wrap:         class around an HTML body: report | article (HTML posts only)
+  og_image:     link preview image for this post, media/<id>/name.png or .jpg (optional; default og-image.png)
 
   python tools/build.py [--site _site] [--check]
 
@@ -59,6 +60,31 @@ class SourceError(Exception):
     pass
 
 
+OG_DEFAULT = "og-image.png"
+
+
+def og_image_path(v, post_id, where):
+    """The og_image value, checked: a PNG or JPEG of this post, under media/<id>/. None when not set."""
+    if v in (None, ""):
+        return None
+    v = str(v).strip()
+    if not re.fullmatch(r"media/" + re.escape(post_id) + r"/[A-Za-z0-9_-][A-Za-z0-9._-]*\.(png|jpe?g)", v) or ".." in v:
+        raise SourceError(f"{where}: og_image must be media/{post_id}/<name>.png or .jpg, got {v!r}")
+    return v
+
+
+def png_size(path):
+    """(width, height) of a PNG file, or None if it is missing or not a PNG."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(24)
+    except OSError:
+        return None
+    if len(head) < 24 or head[:8] != b"\x89PNG\r\n\x1a\n" or head[12:16] != b"IHDR":
+        return None
+    return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+
+
 def as_date(v, where):
     if v in (None, ""):
         return None
@@ -91,13 +117,28 @@ def load_posts():
                     "summary": str(meta.get("summary") or ""), "techniques": meta.get("techniques") or [],
                     "tool": meta.get("tool"), "incident": meta.get("incident"),
                     "playbooks": meta.get("playbooks") or [], "allow": [str(a) for a in meta.get("allow") or []],
-                    "wrap": meta.get("wrap") or "article", "body": m.group(2)})
+                    "wrap": meta.get("wrap") or "article", "body": m.group(2),
+                    "og_image": og_image_path(meta.get("og_image"), p.stem, p.name)})
     if len({p["id"] for p in out}) != len(out):
         raise SourceError("two posts share an id (one .md and one .html with the same name)")
     return out
 
 
-def page(title, body, depth, description=DESCRIPTION, path=""):
+def og_tags(og_image, og_alt):
+    """og:image tags: the post's own image when it has one, else the site default (1200x630)."""
+    if not og_image:
+        size, url, alt = (1200, 630), f"{SITE}/{OG_DEFAULT}", f"{OWNER}: writing"
+    else:
+        size, url, alt = png_size(ROOT / og_image), f"{SITE}/{og_image}", og_alt or f"{OWNER}: writing"
+    tags = [f'<meta property="og:image" content="{e(url)}">']
+    if size:
+        tags += [f'<meta property="og:image:width" content="{size[0]}">',
+                 f'<meta property="og:image:height" content="{size[1]}">']
+    tags.append(f'<meta property="og:image:alt" content="{e(alt)}">')
+    return "\n".join(tags)
+
+
+def page(title, body, depth, description=DESCRIPTION, path="", og_image=None, og_alt=None):
     rel = "/writing/" if depth is None else "../" * depth
     home = rel or "./"
     full = f"Writing · {OWNER}" if not title else f"{title} · {OWNER}"
@@ -115,10 +156,7 @@ def page(title, body, depth, description=DESCRIPTION, path=""):
 <meta property="og:type" content="{"article" if depth == 1 and path else "website"}">
 <meta property="og:url" content="{SITE}/{path}">
 <link rel="canonical" href="{SITE}/{path}">
-<meta property="og:image" content="{SITE}/og-image.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Estul Lachin: writing">
+{og_tags(og_image, og_alt)}
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="{rel}favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="{rel}style.css">
@@ -215,7 +253,8 @@ def post_page(p):
 <h1>{e(p["title"])}</h1>
 <p class="meta">{" · ".join(bits)} {chips(p["techniques"])}</p>
 <div class="prose">{media_paths(text)}{extra}</div>"""
-    return page(p["title"], body, 1, p["summary"] or DESCRIPTION, f"{p['id']}/")
+    return page(p["title"], body, 1, p["summary"] or DESCRIPTION, f"{p['id']}/",
+                og_image=p.get("og_image"), og_alt=p["title"])
 
 
 ALLOWED_NETS = (r"^(10|127)\.", r"^192\.168\.", r"^172\.(1[6-9]|2\d|3[01])\.", r"^192\.0\.2\.", r"^198\.51\.100\.",
@@ -260,6 +299,8 @@ def build(out):
         src = ROOT / "media" / p["id"]
         if src.is_dir():
             shutil.copytree(src, out / "media" / p["id"])
+        if p.get("og_image") and not (ROOT / p["og_image"]).is_file():
+            problems.append(f"{p['id']}: missing og_image {p['og_image']}")
         html_text = post_page(p)
         for ref in re.findall(r'(?:src|href)="\.\./media/([^"]+)"', html_text):
             if not (ROOT / "media" / ref).is_file():
