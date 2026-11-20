@@ -1,0 +1,207 @@
+---
+type: incident
+title: 'INC-002: A second botnet evicted the first and took over Honeypot #2'
+date: '2026-11-16'
+summary: A second botnet guessed the new bait password on my honeypot, evicted the first intruder and tried to spread inside the network. It never got root and no traffic got out.
+techniques: [T1110.001, T1078, T1082, T1057, T1046, T1021.004, T1059.004, T1548.003, T1053.003, T1543.002, T1547.013, T1546.004, T1098.004, T1036.005, T1070.006, T1070.004, T1027.002, T1496]
+og_image: media/inc-002/og-inc-002.png
+wrap: report
+---
+<section class="intro">
+  <h1>INC-002: A second botnet evicted the first and took over Honeypot #2</h1>
+  <p class="lead">Honeypot #2 · Incident date 2026-11-16 (UTC) · Analyst: Estul Lachin</p>
+  <p class="status">Final report · 48-hour observation closed 2026-11-18 08:00 UTC</p>
+</section>
+
+<h2 id="summary">Summary</h2>
+<p>At 08:03 UTC on 2026-11-16, a second botnet guessed the bait account's new weak password on Honeypot #2. Within three minutes it <strong>killed the miner left by the first intruder (<a href="../inc-001/">INC-001</a>); a minute later it deleted that group's SSH keys and planted its own</strong>. Over the next three hours it installed a disguised trojan, an XMRig miner and at least four kinds of persistence.</p>
+<p>Its scanner then tried SSH on 509 internal addresses, including our gateway. Every packet was dropped on the victim, and the scanner later ran the 1 GB server out of memory and was killed by the kernel. The attacker <strong>never got root</strong> (<code>sudo</code> and <code>su</code> were refused) and <strong>no traffic got out</strong>.</p>
+<p>This time detection was automatic: a rule added after INC-001 raised a High incident in Microsoft Sentinel. The investigation also found a blind spot, which a new rule closed the same day.</p>
+
+<div class="table-scroll"><table class="rt">
+  <tr><th>Item</th><th>Finding</th></tr>
+  <tr><td>Severity</td><td>Medium: an expected break-in inside a honeypot, with no spillover</td></tr>
+  <tr><td>Initial access</td><td>SSH with a common weak password (the phase-2 bait), guessed after about 54 minutes of brute force</td></tr>
+  <tr><td>Objective</td><td>Crypto mining; most likely also to use the server as a base for attacking others (it brought an SSH scanner and a password list)</td></tr>
+  <tr><td>Relation to INC-001</td><td>Evicted the first group: killed its miner, removed its two SSH keys</td></tr>
+  <tr><td>Privilege escalation</td><td>None: <code>sudo</code> said "user NOT in sudoers", <code>su</code> failed</td></tr>
+  <tr><td>Egress</td><td>None: mining pools, C2, downloads and outbound brute force all blocked</td></tr>
+  <tr><td>Lateral movement</td><td>Attempted and failed: SSH to 509 internal addresses, dropped on the victim</td></tr>
+  <tr><td>Detection</td><td>Rules 100210 (High incident #603), 100211 and 100212; new rule 100202</td></tr>
+  <tr><td>Antivirus view</td><td>Miner 28/64 engines; trojan 4/52; scanner 1/51 (VirusTotal hash lookups)</td></tr>
+  <tr><td>Disposition</td><td>Not cleaned; observed for 48 hours. To be rebuilt from a clean image when phase 2 ends</td></tr>
+</table></div>
+
+<h2 id="detection">Detection</h2>
+<p>Rule 100210, added after INC-001, fires on any password login to the bait account. It matched at 08:03:19 and Sentinel raised <strong>High incident #603</strong> automatically. Two minutes later, rule 100211 raised Medium incident #604 for the cron change. Nobody was watching at the time; the incidents were waiting at the next routine check.</p>
+<figure>
+  <a href="media/inc-002/inc002-0-incident-603.png"><img src="media/inc-002/inc002-0-incident-603.png" width="2080" height="1588" loading="lazy" alt="Microsoft Sentinel incident 603: High severity, rule 100210 on web01, source IP 109[.]160[.]32[.]162, with related incidents 604, 525 and 595."></a>
+  <figcaption>Figure 1. Incident #603, raised automatically. IP addresses are defanged and the owner name is replaced in this image.</figcaption>
+</figure>
+<div class="table-scroll"><table class="rt">
+  <tr><th>Rule</th><th>Level</th><th>What it caught in this incident</th></tr>
+  <tr><td>100210</td><td>13</td><td>Password logins at 08:03:19 and 08:05:53</td></tr>
+  <tr><td>100211</td><td>12</td><td>Cron rewritten; then again about every 12 hours</td></tr>
+  <tr><td>100212</td><td>12</td><td>Changes under <code>/home/admin</code>: the rival's miner deleted, <code>authorized_keys</code> replaced, persistence and decoy files</td></tr>
+  <tr><td>auditd execve</td><td>&mdash;</td><td>Every program the attacker ran, and whether it ran as root</td></tr>
+  <tr><td>5108</td><td>12</td><td>The server running out of memory at 11:00</td></tr>
+</table></div>
+<p>What was missed: the scanner's SSH attempts against the gateway. The victim's own firewall dropped them, so they were filed as routine blocked traffic and rule 100200 stayed silent (see <a href="#improvements">Detection improvements</a>).</p>
+
+<h2 id="timeline">Timeline (UTC, 2026-11-16)</h2>
+<p>The bait password had been changed about three hours earlier. From login to evicting the rival took about two and a half minutes; the rest of the setup took three hours.</p>
+<div class="table-scroll"><table class="rt">
+  <tr><th>Time</th><th>Source</th><th>Event</th><th>Evidence</th></tr>
+  <tr><td class="t">07:00&ndash;08:06</td><td>95[.]216[.]80[.]157</td><td>Another address brute-forcing at the same time, without success</td><td>Wazuh 5551, 5763</td></tr>
+  <tr><td class="t">07:09&ndash;08:02</td><td>109[.]160[.]32[.]162</td><td>Brute force, mostly with user names that do not exist</td><td>Wazuh 5712, 5551</td></tr>
+  <tr><td class="t">08:03:19</td><td>109[.]160[.]32[.]162</td><td><strong>Logs in as <code>admin</code> with the bait password</strong></td><td>100210 &rarr; #603</td></tr>
+  <tr><td class="t">08:03</td><td>session</td><td>Surveys the machine: <code>uname</code>, <code>uptime</code>, <code>nproc</code>, <code>lspci</code>, <code>lscpu</code>, one <code>curl</code></td><td>auditd</td></tr>
+  <tr><td class="t">08:05:47</td><td>session</td><td><strong>Evicts the rival</strong>: <code>killall5</code>, <code>pgrep</code>, <code>kill</code>; deletes INC-001's <code>.dhpcd</code>; rewrites cron</td><td>100211 (#604), 100212</td></tr>
+  <tr><td class="t">08:05:53</td><td>109[.]160[.]32[.]162</td><td>Second login</td><td>100210</td></tr>
+  <tr><td class="t">08:06:36</td><td>session</td><td>Tries <code>sudo</code> to run <code>/var/tmp/fLSJqZDe</code> as root: refused. <code>su</code> to root: failed</td><td>journal</td></tr>
+  <tr><td class="t">08:06:40</td><td>session</td><td><strong>Replaces <code>authorized_keys</code></strong>: INC-001's two keys gone, one new key left</td><td>100212</td></tr>
+  <tr><td class="t">08:06</td><td>session</td><td>Starts the scanner <code>/var/tmp/.x/network</code>; runs <code>passwd</code> three times</td><td>auditd</td></tr>
+  <tr><td class="t">08:06:46</td><td>scanner</td><td>First SSH attempt to the internal network, blocked on the victim</td><td>100201</td></tr>
+  <tr><td class="t">08:16</td><td>session</td><td>Starts the trojan under the fake name <code>httpd -DFOREGROUND</code></td><td>auditd; <code>ps</code></td></tr>
+  <tr><td class="t">about 08:32</td><td>session</td><td>Starts the same trojan again as <code>/var/tmp/.X189</code> under the fake name <code>mysqld</code>, then deletes the file</td><td>auditd; <code>ps</code></td></tr>
+  <tr><td class="t">08:40&ndash;11:05</td><td>&mdash;</td><td>Persistence and decoy files: a systemd user service, shell start-up files, a desktop autostart entry, program copies</td><td>100212</td></tr>
+  <tr><td class="t">about 09:27</td><td>&mdash;</td><td>XMRig miner <code>6ad23bdc</code> starts (from the process's run time)</td><td><code>ps</code></td></tr>
+  <tr><td class="t">11:00:13</td><td>kernel</td><td><strong>Out of memory: the kernel kills the scanner</strong>. Scanning stops</td><td>journal; 5108</td></tr>
+  <tr><td class="t">11-16 to 11-18</td><td>&mdash;</td><td>The trojan moves to a new random folder under <code>/var/tmp</code> and rewrites cron about every 12 hours</td><td>100211</td></tr>
+  <tr><td class="t">11-18 08:00</td><td>&mdash;</td><td>48-hour observation ends: no return visits, no third group, no root</td><td>&mdash;</td></tr>
+</table></div>
+
+<h2 id="behavior">What the attacker did</h2>
+<p>Compared with the careless script in INC-001, this group was organised: clear out the competition first, then hold the machine with several layers of persistence and disguise, and bring a scanner to spread further.</p>
+<figure>
+  <a href="media/inc-002/inc002-A-root-denied-key-swap.png"><img src="media/inc-002/inc002-A-root-denied-key-swap.png" width="2944" height="772" loading="lazy" alt="Terminal output: sudo refused because admin is not in sudoers, su authentication failure, and authorized_keys now containing a single RSA key labelled ElPatrono1337."></a>
+  <figcaption>Figure 2. Root refused twice; the rival's backdoor keys replaced by a single new key.</figcaption>
+</figure>
+<figure>
+  <a href="media/inc-002/inc002-B-disguised-processes.png"><img src="media/inc-002/inc002-B-disguised-processes.png" width="1840" height="912" loading="lazy" alt="Process list showing httpd and mysqld names pointing to a hidden desktop metadata file and a deleted file in /var/tmp, and a randomly named miner."></a>
+  <figcaption>Figure 3. Three processes, three disguises.</figcaption>
+</figure>
+<figure>
+  <a href="media/inc-002/inc002-C-copies-fake-dates.png"><img src="media/inc-002/inc002-C-copies-fake-dates.png" width="1840" height="961" loading="lazy" alt="Archive listing: seven 41 MB files with system-like names and dates from 2025-10 to 2026-05, plus our two memory copies dated 2026-11-16."></a>
+  <figcaption>Figure 4. One program copied seven times, with forged dates.</figcaption>
+</figure>
+
+<h2 id="attack">MITRE ATT&amp;CK mapping</h2>
+<div class="table-scroll"><table class="rt">
+  <tr><th>Tactic</th><th>Technique</th><th>In this incident</th></tr>
+  <tr><td>Credential Access</td><td><a href="https://attack.mitre.org/techniques/T1110/001/">T1110.001</a> Password Guessing</td><td>Guessed the bait password after about 54 minutes</td></tr>
+  <tr><td>Initial Access</td><td><a href="https://attack.mitre.org/techniques/T1078/">T1078</a> Valid Accounts</td><td>Two logins as <code>admin</code></td></tr>
+  <tr><td>Discovery</td><td><a href="https://attack.mitre.org/techniques/T1082/">T1082</a> System Information Discovery</td><td><code>uname</code>, <code>uptime</code>, <code>nproc</code>, <code>lspci</code>, <code>lscpu</code></td></tr>
+  <tr><td>Discovery</td><td><a href="https://attack.mitre.org/techniques/T1057/">T1057</a> Process Discovery</td><td><code>pgrep</code> to find the rival's processes</td></tr>
+  <tr><td>Discovery</td><td><a href="https://attack.mitre.org/techniques/T1046/">T1046</a> Network Service Discovery</td><td>Scanned port 22 on 509 internal addresses</td></tr>
+  <tr><td>Lateral Movement</td><td><a href="https://attack.mitre.org/techniques/T1021/004/">T1021.004</a> SSH (failed)</td><td>Brought a password list to log in to other machines; every attempt blocked</td></tr>
+  <tr><td>Execution</td><td><a href="https://attack.mitre.org/techniques/T1059/004/">T1059.004</a> Unix Shell</td><td><code>bash -c</code> commands; <code>nohup</code> for background jobs</td></tr>
+  <tr><td>Privilege Escalation</td><td><a href="https://attack.mitre.org/techniques/T1548/003/">T1548.003</a> Sudo (failed)</td><td><code>sudo</code> refused; <code>su</code> failed</td></tr>
+  <tr><td>Persistence</td><td><a href="https://attack.mitre.org/techniques/T1053/003/">T1053.003</a> Cron</td><td>Every minute, <code>@reboot</code>, daily, monthly, plus every 30 minutes</td></tr>
+  <tr><td>Persistence</td><td><a href="https://attack.mitre.org/techniques/T1543/002/">T1543.002</a> Systemd Service</td><td>User service <code>gvfs-metadata.service</code></td></tr>
+  <tr><td>Persistence</td><td><a href="https://attack.mitre.org/techniques/T1547/013/">T1547.013</a> XDG Autostart Entries</td><td><code>.config/autostart/.gnome-software-service.desktop</code></td></tr>
+  <tr><td>Persistence</td><td><a href="https://attack.mitre.org/techniques/T1546/004/">T1546.004</a> Unix Shell Configuration Modification</td><td><code>.profile</code>, <code>.bashrc</code>, <code>.bash_profile</code></td></tr>
+  <tr><td>Persistence</td><td><a href="https://attack.mitre.org/techniques/T1098/004/">T1098.004</a> SSH Authorized Keys</td><td>Replaced the rival's two keys with its own</td></tr>
+  <tr><td>Defense Evasion</td><td><a href="https://attack.mitre.org/techniques/T1036/005/">T1036.005</a> Match Legitimate Name</td><td>Processes named <code>httpd -DFOREGROUND</code> and <code>mysqld --defaults-file=&hellip;</code></td></tr>
+  <tr><td>Defense Evasion</td><td><a href="https://attack.mitre.org/techniques/T1070/006/">T1070.006</a> Timestomp</td><td>Seven copies dated 2025-10 to 2026-05</td></tr>
+  <tr><td>Defense Evasion</td><td><a href="https://attack.mitre.org/techniques/T1070/004/">T1070.004</a> File Deletion</td><td>Deleted its own files after starting them; deleted the rival's miner</td></tr>
+  <tr><td>Defense Evasion</td><td><a href="https://attack.mitre.org/techniques/T1027/002/">T1027.002</a> Software Packing</td><td>All three samples UPX-packed (VirusTotal tags)</td></tr>
+  <tr><td>Impact</td><td><a href="https://attack.mitre.org/techniques/T1496/">T1496</a> Resource Hijacking</td><td>XMRig miner; the trojan holds 220 MB of memory</td></tr>
+</table></div>
+<p>Two behaviours fall outside ATT&amp;CK but are worth noting. <strong>Turf war</strong>: removing a competitor's miner and keys within minutes is common between mining botnets. <strong>Moving house</strong>: the trojan relocates to a new random folder about every 12 hours, so tools that look for a fixed path miss it.</p>
+
+<h2 id="impact">Impact assessment</h2>
+<p>No root, no traffic out, no contact with the gateway. The impact stayed inside the <code>admin</code> account's permissions and the server's memory and CPU.</p>
+<p><strong>Privilege escalation: none.</strong> The evidence comes from auditd and the journal, which are shipped off the victim:</p>
+<ul>
+  <li><code>sudo</code> refused to run <code>/var/tmp/fLSJqZDe</code> as root ("user NOT in sudoers"), and <code>su</code> to root failed.</li>
+  <li>In the attacker's sessions, only SUID programs (<code>sudo</code>, <code>su</code>, <code>passwd</code>) and the login banner scripts that sshd runs ran with euid 0. Every attacker program ran as uid 1001. A check at the end of the observation found the same.</li>
+</ul>
+<p><strong>Egress: none.</strong> Between 08:00 and about 16:40 on 2026-11-16, the victim's tripwire blocked 22,417 outbound connections to the destinations below. Not one succeeded.</p>
+<div class="table-scroll"><table class="rt">
+  <tr><th>Destination</th><th>Attempts</th><th>Most likely</th></tr>
+  <tr><td><code>139[.]99[.]123[.]196</code>: 443, 3333, 80</td><td>2,816 / 2,809 / 1,992</td><td>Mining pool (3333 is a common pool port)</td></tr>
+  <tr><td><code>85[.]11[.]167[.]190</code>, <code>209[.]99[.]187[.]94</code>: 443</td><td>2,027 / 2,024</td><td>Backup pool or C2</td></tr>
+  <tr><td><code>51[.]161[.]204[.]231</code>, <code>147[.]189[.]131[.]67</code>, <code>147[.]189[.]131[.]206</code>, <code>166[.]1[.]249[.]218</code>: 8080</td><td>2,027 / 2,018 / 2,016 / 1,069</td><td>C2 or proxy</td></tr>
+  <tr><td><code>91[.]92[.]47[.]220</code>: 222</td><td>1,527</td><td>Suspicious (non-standard SSH port)</td></tr>
+  <tr><td><code>107[.]167[.]92[.]130</code>, <code>107[.]167[.]83[.]34</code>: 443</td><td>1,072 / 1,020</td><td>INC-001's pool; still contacted until 16:40, reason not confirmed</td></tr>
+</table></div>
+<p><strong>Lateral movement: attempted, all blocked.</strong> From 08:06 until the kernel killed it at 11:00:13, the scanner tried SSH on 509 internal addresses (the last blocked attempt reached us at 11:05:33 because monitoring was running about five minutes behind), including 132 attempts at the gateway's two addresses. The victim's own firewall dropped every packet, and without root the attacker could not turn that firewall off. The cloud firewall is a second layer behind it.</p>
+<figure>
+  <a href="media/inc-002/inc002-D-internal-scan.png"><img src="media/inc-002/inc002-D-internal-scan.png" width="2624" height="928" loading="lazy" alt="Gateway query results: 63 and 69 blocked SSH attempts at the gateway's two internal addresses, scanning from 08:06 to 11:05, 509 distinct internal addresses."></a>
+  <figcaption>Figure 5. The scanner turned on the internal network and never got out of the victim.</figcaption>
+</figure>
+<p><strong>Resources: memory at the limit.</strong> The victim has 969 MB and no swap. The trojan holds 220 MB and the scanner peaked at about 160 MB, so at 11:00:13 the kernel's out-of-memory killer stopped the scanner. Our monitoring agent and admin access are set to be killed last, and kept running. The miner used under 1.5% CPU, most likely because it could not reach any pool.</p>
+<figure>
+  <a href="media/inc-002/inc002-F-oom-kill.png"><img src="media/inc-002/inc002-F-oom-kill.png" width="2590" height="983" loading="lazy" alt="Kernel log: out of memory, killed process network; the process list afterwards shows the fake httpd, fake mysqld, the miner and an old admin SSH session."></a>
+  <figcaption>Figure 6. The attacker's own scanner ran the server out of memory and was killed.</figcaption>
+</figure>
+
+<h2 id="iocs">Indicators of compromise</h2>
+<p>Hashes were only searched on VirusTotal; no samples were uploaded.</p>
+<div class="table-scroll"><table class="rt">
+  <tr><th>Type</th><th>Value</th><th>Role</th></tr>
+  <tr><td>IPv4</td><td><code>109[.]160[.]32[.]162</code></td><td>Brute force and successful logins</td></tr>
+  <tr><td>IPv4</td><td><code>95[.]216[.]80[.]157</code></td><td>Parallel brute force, no success</td></tr>
+  <tr><td>IPv4</td><td>Outbound destinations in the <a href="#impact">egress table</a></td><td>Pools, C2 or proxies, all blocked</td></tr>
+  <tr><td>SHA256</td><td><code>6b9e912f408b96ac92b400e8c4f373626ff810085008a9eddba6957520bd9edf</code></td><td>Trojan, 41,057,364 bytes (fake <code>httpd</code> / <code>mysqld</code>); VirusTotal 4/52</td></tr>
+  <tr><td>SHA256</td><td><code>e013414f6b93db4b29a47979b8d2a64a8e7c08c86e5f285d8efded4a57392635</code></td><td>XMRig miner <code>6ad23bdc</code>; VirusTotal 28/64</td></tr>
+  <tr><td>SHA256</td><td><code>93077a9a0e0ccade17264f2ba27395d563a683b5f83abc17bb46d259b89e7bf8</code></td><td>Scanner <code>.x/network</code>, 44,919,928 bytes; VirusTotal 1/51</td></tr>
+  <tr><td>Path</td><td><code>/var/tmp/.x/</code> (<code>network</code>, <code>pass</code>, <code>iplist</code>, <code>bios.txt</code>)</td><td>Scanner kit</td></tr>
+  <tr><td>Path</td><td><code>~/.local/share/gvfs-metadata/home</code>, <code>/var/tmp/.X189</code> (deleted) and other copies</td><td>Trojan copies with forged dates</td></tr>
+  <tr><td>Path</td><td><code>/var/tmp/&lt;random&gt;/99045aa5</code>, <code>.c</code></td><td>Cron entry points; the folder changes about every 12 hours</td></tr>
+  <tr><td>Path</td><td><code>~/.config/systemd/user/gvfs-metadata.service</code>, <code>~/.config/autostart/.gnome-software-service.desktop</code></td><td>Persistence</td></tr>
+  <tr><td>SSH key</td><td><code>SHA256:AkrAM6Cdbkqok1OHU527WzpYGQqPQJrubcEP9Dlj7yI</code> (RSA 2048, comment ElPatrono1337)</td><td>Backdoor</td></tr>
+</table></div>
+<figure>
+  <a href="media/inc-002/inc002-G-virustotal.png"><img src="media/inc-002/inc002-G-virustotal.png" width="1900" height="1832" loading="lazy" alt="VirusTotal results: INC-002 miner 28 of 64, INC-001 miner 32 of 64, INC-002 trojan 4 of 52, INC-002 scanner 1 of 51."></a>
+  <figcaption>Figure 7. Antivirus knows the miners, but barely sees the tools that did the real work.</figcaption>
+</figure>
+
+<h2 id="response">Response and evidence handling</h2>
+<p>As in INC-001, the plan was to observe, not clean. One predefined isolation trigger was hit along the way. We weighed it and chose not to isolate, and record that decision openly here.</p>
+<ol>
+  <li><strong>Safety first.</strong> Confirmed the agent was online, rule 100200 had not fired and no attacker program ran as root before digging in.</li>
+  <li><strong>Read-only investigation</strong> over the WireGuard management channel (<code>ps</code>, <code>ls</code>, <code>journalctl</code>, <code>crontab -l</code>, <code>ssh-keygen -lf</code>). The attacker's command history came from Wazuh alerts on the gateway.</li>
+  <li><strong>Evidence.</strong> Archived <code>/var/tmp</code>, <code>/home/admin</code>, the crontab, and copies of the three running programs taken from <code>/proc/&lt;pid&gt;/exe</code>. The <code>mysqld</code> file had already been deleted and was recovered from memory. Nothing was extracted or run; hashes were computed by streaming files out of the archive.</li>
+  <li><strong>Closed the detection blind spot</strong> the same day (rule 100202).</li>
+  <li><strong>Observed for 48 hours</strong>, until 2026-11-18 08:00 UTC: no return visits, no third group, no root.</li>
+</ol>
+<p><strong>The isolation decision.</strong> Our rule was to isolate if the victim probed the gateway. The scanner did aim at the gateway's addresses, but every packet died on the victim. All three layers held: no root, the victim's firewall, and the cloud firewall. We did not isolate. We narrowed the trigger to "a probe actually reaches the gateway (rule 100200) or any sign of root", and added rule 100202 so that this kind of attempt raises an alert from now on.</p>
+
+<h2 id="improvements">Detection improvements</h2>
+<p><strong>Why rule 100200 stayed silent:</strong> it only matches the gateway's own firewall log, so it fires only when a probe actually reaches the gateway. These probes were dropped earlier, on the victim, and were filed as routine blocked traffic. The earlier a packet is stopped, the less this rule saw.</p>
+<figure>
+  <a href="media/inc-002/inc002-E-blind-spot-fixed.png"><img src="media/inc-002/inc002-E-blind-spot-fixed.png" width="2238" height="931" loading="lazy" alt="Rule 100200 definition matching only VICTIM- gateway logs, and a wazuh-logtest run showing a real scan log line now matching new rule 100202 at level 12."></a>
+  <figcaption>Figure 8. The blind spot and the fix, tested against a real line from the scan.</figcaption>
+</figure>
+<div class="table-scroll"><table class="rt">
+  <tr><th>ID</th><th>Change</th><th>Verification</th></tr>
+  <tr><td>100202</td><td>New rule, level 12: a blocked connection from the victim to any internal 10.x address. At most one alert per 15 minutes, so a scan cannot flood Sentinel; the rest stay logged as rule 100201</td><td><code>wazuh-analysisd -t</code> passes; <code>wazuh-logtest</code> on a real scan line matches 100202 at level 12</td></tr>
+  <tr><td>Isolation trigger</td><td>Narrowed to rule 100200 (a probe reaches the gateway), any sign of root, or the agent or management SSH going offline</td><td>&mdash;</td></tr>
+</table></div>
+<p>Rule 100202 has not fired since: the scanner never came back after the kernel killed it. Its end-to-end path into Sentinel is therefore still to be confirmed. The rules added after INC-001 all proved themselves: 100210 raised the High incident, and 100211 and 100212 recorded every persistence step.</p>
+
+<h2 id="lessons">Lessons learned</h2>
+<p class="keyline">The programs that did the real work were almost invisible to antivirus (4 and 1 detections). Behaviour monitoring caught them: auditd recorded every program run, file integrity monitoring recorded every persistence file, and the egress tripwire recorded every attempt to get out.</p>
+<h3>What worked</h3>
+<ul>
+  <li>Rule 100210 from INC-001 raised the High incident on its own. No manual hunt this time.</li>
+  <li>A bait account without sudo rights stopped privilege escalation. The attacker came ready with a tool for it and never got to use it.</li>
+  <li>Egress control stopped everything again: pools, C2, and lateral movement. <strong>Without it, this honeypot would have become a launch pad against others.</strong></li>
+  <li>Out-of-memory protection worked: the kernel killed the scanner, not our agent or management SSH.</li>
+  <li>Programs can be preserved from memory: the deleted <code>mysqld</code> was recovered from <code>/proc/&lt;pid&gt;/exe</code>.</li>
+</ul>
+<h3>What to improve</h3>
+<ul>
+  <li>Design detection around what the attacker is trying to do, not where the packet ended up. Rule 100200 saw less the earlier a probe was stopped.</li>
+  <li>Write isolation triggers precisely. "The victim probes the gateway" was ambiguous and had to be interpreted after the fact.</li>
+  <li>1 GB of memory is too tight. The attacker's tools filled it, and monitoring fell about five minutes behind.</li>
+  <li>The gateway disk is 80% full. The evidence archive held nine copies of the same 41 MB program (the attacker's seven plus our two memory copies); de-duplicate by hash before archiving.</li>
+</ul>
+<h3>Next steps</h3>
+<ul>
+  <li>Confirm rule 100202 end to end in Sentinel at the next internal scan.</li>
+  <li>Tag tripwire logs with the owning process, which would also explain why INC-001's pool was still being contacted.</li>
+  <li>Decide when phase 2 ends, then rebuild the victim from a clean image, with 2 GB of memory.</li>
+</ul>
